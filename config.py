@@ -59,7 +59,7 @@ DEFAULT_SETTINGS = {
     "discord_buttons": [
         {"label": "GitHub", "url": "https://github.com/a3ro-dev/aAlem"}
     ],
-    "discord_update_interval_s": 15,
+    "discord_update_interval_s": 1,
 
     # Security (password protection)
     "kdf_iterations": 390000,
