@@ -53,13 +53,14 @@ DEFAULT_SETTINGS = {
 
     # Discord Rich Presence
     "discord_rpc_enabled": True,
-    "discord_client_id": "1405965776325967872",  # replace with your Discord app client id
-    "discord_large_image": "alem",  # asset key configured in Discord Dev Portal
+    "discord_client_id": "1320090449886273606",  # Replace with your actual Discord app client ID
+    "discord_large_image": "alem",  # Asset key configured in Discord Dev Portal
     "discord_large_text": "Alem - Smart Notes",
     "discord_buttons": [
-        {"label": "GitHub", "url": "https://github.com/a3ro-dev/aAlem"}
+        {"label": "⭐ GitHub Repo", "url": "https://github.com/a3ro-dev/aAlem"},
+        {"label": "📝 Try Alem", "url": "https://github.com/a3ro-dev/aAlem/releases"}
     ],
-    "discord_update_interval_s": 1,
+    "discord_update_interval_s": 15,
 
     # Security (password protection)
     "kdf_iterations": 390000,
