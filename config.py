@@ -8,7 +8,7 @@ from typing import Dict, Any
 # Application constants
 APP_NAME = "Alem"
 APP_VERSION = "1.1.1"
-APP_AUTHOR = "Alem Team"
+APP_AUTHOR = "a3ro-dev"
 
 # Default settings
 DEFAULT_SETTINGS = {
