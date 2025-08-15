@@ -37,6 +37,32 @@ DEFAULT_SETTINGS = {
     # AI Settings
     "ai_search_enabled": True,
     "ai_model_cache": True,
+
+    # Markdown / Editor Modes
+    "default_content_format": "html",  # 'html' or 'markdown'
+    "markdown_extensions": [
+        "fenced_code", "codehilite", "tables", "toc"
+    ],
+
+    # Redis Cache
+    "redis_enabled": True,
+    "redis_host": "localhost",
+    "redis_port": 6379,
+    "redis_db": 0,
+    "redis_flush_interval_s": 60,  # periodic flush to DB
+
+    # Discord Rich Presence
+    "discord_rpc_enabled": True,
+    "discord_client_id": "1405965776325967872",  # replace with your Discord app client id
+    "discord_large_image": "alem",  # asset key configured in Discord Dev Portal
+    "discord_large_text": "Alem - Smart Notes",
+    "discord_buttons": [
+        {"label": "GitHub", "url": "https://github.com/a3ro-dev/aAlem"}
+    ],
+    "discord_update_interval_s": 15,
+
+    # Security (password protection)
+    "kdf_iterations": 390000,
 }
 
 # Color themes

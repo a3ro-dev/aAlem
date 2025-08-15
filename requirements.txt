@@ -22,3 +22,7 @@ pyperclip>=1.8.2
 rich>=13.7.0  # For enhanced console output in install/launch scripts
 packaging>=23.0  # For version parsing
 typing-extensions>=4.8.0  # For improved type hints (Python < 3.11)
+markdown>=3.5.1  # Markdown rendering
+redis>=5.0.1     # Redis cache client
+pypresence>=4.3.0  # Discord Rich Presence
+cryptography>=41.0.0  # Encryption for locked notes

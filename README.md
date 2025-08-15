@@ -1,5 +1,11 @@
 # Alem Desktop Application
 
+<p align="center">
+	<img src="./alem.png" alt="Alem Icon" width="128" height="128" />
+	<br/>
+	<sub>Glassy, minimal note-taking for developers</sub>
+</p>
+
 A lightweight, AI-powered note-taking app designed specifically for developers and professionals.
 
 ## ✨ What's New in v1.1

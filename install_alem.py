@@ -164,6 +164,9 @@ def main():
         "pyperclip>=1.8.2",
         "rich>=13.7.0",  # For enhanced console output
         "packaging>=23.0",  # For version parsing
+        "markdown>=3.5.1",  # Markdown rendering
+        "redis>=5.0.1",     # Redis client
+        "pypresence>=4.3.0",  # Discord RPC
     ] if args.optional else []
 
     ai = []
