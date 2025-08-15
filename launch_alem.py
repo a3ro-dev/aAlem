@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Alem Launcher - Fast, reliable application launcher
+Alem Launcher - Fast, reliable application launcher with enhanced features
 """
 import argparse
 import sys
 import os
 import subprocess
 import time
+import platform
 from pathlib import Path
 from typing import List, Optional
 
@@ -24,12 +25,18 @@ except ImportError:
 
 
 def print_header():
-    """Display launcher header"""
+    """Display launcher header with system info"""
     if RICH:
-        console.print(Panel.fit("Alem Application Launcher", subtitle="v1.0", style="bold blue"))
+        console.print(Panel.fit(
+            f"Alem Application Launcher v1.1.1\n"
+            f"Python {sys.version.split()[0]} • {platform.system()} {platform.release()}", 
+            subtitle="Enhanced launcher with dependency management", 
+            style="bold blue"
+        ))
     else:
-        print("Alem Application Launcher v1.0")
-        print("=" * 30)
+        print("Alem Application Launcher v1.1.1")
+        print(f"Python {sys.version.split()[0]} • {platform.system()} {platform.release()}")
+        print("=" * 50)
 
 
 def check_python_version() -> bool:
@@ -44,11 +51,13 @@ def check_python_version() -> bool:
 
 
 def check_dependencies(verbose: bool = False) -> List[str]:
-    """Fast dependency check with detailed info if requested"""
+    """Enhanced dependency check with version information"""
     deps = {
         'PyQt6': 'GUI framework',
         'numpy': 'Numerical computing',
-        'sqlite3': 'Database (built-in)'
+        'sqlite3': 'Database (built-in)',
+        'rich': 'Enhanced console output (optional)',
+        'psutil': 'System monitoring (optional)'
     }
     
     missing = []
@@ -56,27 +65,50 @@ def check_dependencies(verbose: bool = False) -> List[str]:
         table = Table(title="Dependency Status")
         table.add_column("Package", style="cyan")
         table.add_column("Status", style="bold")
+        table.add_column("Version", style="dim")
         table.add_column("Description", style="dim")
     
     for pkg, desc in deps.items():
         try:
             if pkg == 'sqlite3':
-                import sqlite3  # Built-in, always available
+                import sqlite3
                 status = "Built-in"
+                version = "stdlib"
             else:
-                __import__(pkg)
+                module = __import__(pkg)
                 status = "Available"
+                version = getattr(module, '__version__', 'unknown')
         except ImportError:
-            missing.append(pkg)
-            status = "Missing"
+            if pkg in ['rich', 'psutil']:  # Optional dependencies
+                status = "Optional"
+                version = "N/A"
+            else:
+                missing.append(pkg)
+                status = "Missing"
+                version = "N/A"
         
         if verbose and RICH:
-            table.add_row(pkg, status, desc)
+            table.add_row(pkg, status, version, desc)
     
     if verbose and RICH:
         console.print(table)
+    elif verbose:
+        print("\nDependency Status:")
+        for pkg, desc in deps.items():
+            try:
+                if pkg == 'sqlite3':
+                    print(f"  {pkg}: Built-in (stdlib)")
+                else:
+                    module = __import__(pkg)
+                    version = getattr(module, '__version__', 'unknown')
+                    print(f"  {pkg}: Available ({version})")
+            except ImportError:
+                if pkg in ['rich', 'psutil']:
+                    print(f"  {pkg}: Optional (not installed)")
+                else:
+                    print(f"  {pkg}: Missing")
     
-    return missing
+    return [pkg for pkg in missing if pkg not in ['rich', 'psutil']]
 
 
 def find_alem_executable() -> Optional[Path]:

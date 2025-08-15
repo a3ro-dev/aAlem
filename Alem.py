@@ -1,8 +1,11 @@
 import sys
 import sqlite3
 import json
+import os
+import logging
 from datetime import datetime
 from typing import List, Dict, Optional
+from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
@@ -10,8 +13,12 @@ from PyQt6.QtWidgets import (
     QPushButton, QLabel, QMenuBar, QStatusBar, QMessageBox,
     QDialog, QDialogButtonBox, QFormLayout, QComboBox, QFrame
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, QStandardPaths
 from PyQt6.QtGui import QFont, QAction, QIcon, QPixmap, QTextCharFormat, QColor
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class Note:
     """Simple Note class"""
@@ -38,114 +45,199 @@ class Note:
         return cls(**data)
 
 class Database:
-    """Simple SQLite database for notes"""
-    def __init__(self, db_path="smartnotes.db"):
-        self.db_path = db_path
+    """Enhanced SQLite database for notes with better error handling and features"""
+    def __init__(self, db_path: Optional[str] = None):
+        if db_path is None:
+            # Store database in user data directory
+            data_dir = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation))
+            data_dir.mkdir(parents=True, exist_ok=True)
+            self.db_path = data_dir / "alem_notes.db"
+        else:
+            self.db_path = Path(db_path)
+        
+        logger.info(f"Database location: {self.db_path}")
         self.init_db()
 
     def init_db(self):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS notes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                content TEXT NOT NULL,
-                tags TEXT DEFAULT '',
-                created_at TEXT,
-                updated_at TEXT
-            )
-        """)
-        conn.commit()
-        conn.close()
+        """Initialize database with proper error handling"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    title TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    tags TEXT DEFAULT '',
+                    created_at TEXT,
+                    updated_at TEXT,
+                    version INTEGER DEFAULT 1
+                )
+            """)
+            
+            # Add version column if it doesn't exist (for migration)
+            cursor.execute("PRAGMA table_info(notes)")
+            columns = [column[1] for column in cursor.fetchall()]
+            if 'version' not in columns:
+                cursor.execute("ALTER TABLE notes ADD COLUMN version INTEGER DEFAULT 1")
+            
+            conn.commit()
+        except sqlite3.Error as e:
+            logger.error(f"Database initialization error: {e}")
+            raise
+        finally:
+            conn.close()
 
     def get_all_note_headers(self) -> List[Note]:
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        cursor.execute("SELECT id, title, tags, created_at, updated_at FROM notes ORDER BY updated_at DESC")
-        rows = cursor.fetchall()
-        conn.close()
+        """Get all note headers (without content) for list display"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT id, title, tags, created_at, updated_at FROM notes ORDER BY updated_at DESC")
+            rows = cursor.fetchall()
+            
+            notes = []
+            for row in rows:
+                notes.append(Note(
+                    id=row[0], title=row[1], content="", tags=row[2],
+                    created_at=row[3], updated_at=row[4]
+                ))
+            return notes
+        except sqlite3.Error as e:
+            logger.error(f"Error fetching note headers: {e}")
+            return []
+        finally:
+            conn.close()
 
-        notes = []
-        for row in rows:
-            notes.append(Note(
-                id=row[0], title=row[1], content="", tags=row[2],
-                created_at=row[3], updated_at=row[4]
-            ))
-        return notes
-
-    
-    # It fetches the full content for ONE note when it's needed, 
     def get_note(self, note_id: int) -> Optional[Note]:
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM notes WHERE id = ?", (note_id,))
-        row = cursor.fetchone()
-        conn.close()
-        if row:
-            return Note(
-                id=row[0], title=row[1], content=row[2], tags=row[3],
-                created_at=row[4], updated_at=row[5]
-            )
-        return None
+        """Fetch the full content for ONE note when needed"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM notes WHERE id = ?", (note_id,))
+            row = cursor.fetchone()
+            
+            if row:
+                return Note(
+                    id=row[0], title=row[1], content=row[2], tags=row[3],
+                    created_at=row[4], updated_at=row[5]
+                )
+            return None
+        except sqlite3.Error as e:
+            logger.error(f"Error fetching note {note_id}: {e}")
+            return None
+        finally:
+            conn.close()
 
     def save_note(self, note: Note) -> int:
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
+        """Save note with proper error handling"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
 
-        if note.id:
-            cursor.execute("""
-                UPDATE notes SET title = ?, content = ?, tags = ?, updated_at = ?
-                WHERE id = ?
-            """, (note.title, note.content, note.tags, datetime.now().isoformat(), note.id))
-        else:
-            cursor.execute("""
-                INSERT INTO notes (title, content, tags, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?)
-            """, (note.title, note.content, note.tags, note.created_at, note.updated_at))
-            note.id = cursor.lastrowid
+            if note.id:
+                cursor.execute("""
+                    UPDATE notes SET title = ?, content = ?, tags = ?, updated_at = ?
+                    WHERE id = ?
+                """, (note.title, note.content, note.tags, datetime.now().isoformat(), note.id))
+            else:
+                cursor.execute("""
+                    INSERT INTO notes (title, content, tags, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (note.title, note.content, note.tags, note.created_at, note.updated_at))
+                note.id = cursor.lastrowid
 
-        conn.commit()
-        conn.close()
-        return note.id
+            conn.commit()
+            return note.id
+        except sqlite3.Error as e:
+            logger.error(f"Error saving note: {e}")
+            raise
+        finally:
+            conn.close()
 
-    def delete_note(self, note_id: int):
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM notes WHERE id = ?", (note_id,))
-        conn.commit()
-        conn.close()
+    def delete_note(self, note_id: int) -> bool:
+        """Delete note with error handling"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM notes WHERE id = ?", (note_id,))
+            conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            logger.error(f"Error deleting note {note_id}: {e}")
+            return False
+        finally:
+            conn.close()
 
-    # OPTIMIZATION: Search returns only headers to keep memory low during search.
     def search_note_headers(self, query: str) -> List[Note]:
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT id, title, tags, created_at, updated_at FROM notes 
-            WHERE title LIKE ? OR content LIKE ? OR tags LIKE ?
-            ORDER BY updated_at DESC
-        """, (f'%{query}%', f'%{query}%', f'%{query}%'))
-        rows = cursor.fetchall()
-        conn.close()
+        """Search returns only headers to keep memory low during search"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id, title, tags, created_at, updated_at FROM notes 
+                WHERE title LIKE ? OR content LIKE ? OR tags LIKE ?
+                ORDER BY updated_at DESC
+            """, (f'%{query}%', f'%{query}%', f'%{query}%'))
+            rows = cursor.fetchall()
 
-        notes = []
-        for row in rows:
-            notes.append(Note(
-                id=row[0], title=row[1], content="", tags=row[2],
-                created_at=row[3], updated_at=row[4]
-            ))
-        return notes
+            notes = []
+            for row in rows:
+                notes.append(Note(
+                    id=row[0], title=row[1], content="", tags=row[2],
+                    created_at=row[3], updated_at=row[4]
+                ))
+            return notes
+        except sqlite3.Error as e:
+            logger.error(f"Error searching notes: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_stats(self) -> Dict[str, int]:
+        """Get database statistics"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT COUNT(*) FROM notes")
+            total_notes = cursor.fetchone()[0]
+            
+            cursor.execute("SELECT COUNT(DISTINCT tags) FROM notes WHERE tags != ''")
+            unique_tags = cursor.fetchone()[0]
+            
+            return {
+                "total_notes": total_notes,
+                "unique_tags": unique_tags,
+                "db_size_kb": round(self.db_path.stat().st_size / 1024, 1) if self.db_path.exists() else 0
+            }
+        except (sqlite3.Error, OSError) as e:
+            logger.error(f"Error getting stats: {e}")
+            return {"total_notes": 0, "unique_tags": 0, "db_size_kb": 0}
+        finally:
+            conn.close()
 
 class SmartNotesApp(QMainWindow):
-    """Main Alem Application Window"""
+    """Main Alem Application Window with enhanced features"""
 
     def __init__(self):
         super().__init__()
         self.db = Database()
-        self.current_note: Optional[Note] = None # This will hold the one fully loaded note
+        self.current_note: Optional[Note] = None
+        self.search_timer = QTimer()
+        self.search_timer.setSingleShot(True)
+        self.search_timer.timeout.connect(self._perform_delayed_search)
+        self.last_search_query = ""
+        
         self.setup_ui()
-        self.load_note_headers() # Load headers, not full notes
+        self.load_note_headers()
+        self.update_stats()
+        
+        # Auto-save timer
+        self.auto_save_timer = QTimer()
+        self.auto_save_timer.timeout.connect(self.auto_save)
+        self.auto_save_timer.start(30000)  # Auto-save every 30 seconds
 
     def setup_ui(self):
         self.setWindowTitle("Alem")
@@ -465,8 +557,9 @@ class SmartNotesApp(QMainWindow):
         self.cache_label = QLabel("Cache: Ready")
         self.search_time_label = QLabel("Search: <20ms")
         self.notes_count_label = QLabel("Notes: 0")
+        self.db_size_label = QLabel("DB: 0 KB")
 
-        for label in [self.cache_label, self.search_time_label, self.notes_count_label]:
+        for label in [self.cache_label, self.search_time_label, self.notes_count_label, self.db_size_label]:
             label.setFont(QFont("Segoe UI", 10, QFont.Weight.Medium))
             label.setStyleSheet("""
                 QLabel { 
@@ -882,17 +975,17 @@ class SmartNotesApp(QMainWindow):
     def refresh_notes_list(self, note_headers: List[Note]):
         """Refresh the notes list widget with a given list of note headers."""
         self.notes_list.clear()
-        for note in note_headers: # It receives the list of headers directly
+        for note in note_headers:
             item_text = f"{note.title}"
             if note.tags:
                 item_text += f" #{note.tags.replace(',', ' #')}"
 
             item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, note.id) 
-            item.setToolTip(f"Tags: {note.tags}") # Tooltip doesn't need full content
+            item.setToolTip(f"Tags: {note.tags}\nCreated: {note.created_at[:10]}")
             self.notes_list.addItem(item)
         
-        self.notes_count_label.setText(f"Notes: {len(note_headers)}")
+        self.update_stats()
 
 
     # OPTIMIZATION: This is the lazy loading in action.
@@ -919,7 +1012,7 @@ class SmartNotesApp(QMainWindow):
 
     def new_note(self):
         """Create a new note"""
-        self.current_note = Note(title="New Note", content="<h1>New Note</h1><p>Start writing here...</p>")
+        self.current_note = Note(title="New Note", content="<p>Start writing here...</p>")
         self.title_input.setText(self.current_note.title)
         self.tags_input.setText("")
         self.content_editor.setHtml(self.current_note.content)
@@ -982,21 +1075,33 @@ class SmartNotesApp(QMainWindow):
         self.save_btn.setEnabled(True)
 
     def on_search(self, text):
-        """Handle search input changes"""
+        """Handle search input changes with debouncing"""
         if not text.strip():
             self.load_note_headers()
             return
-        # Use a short delay to make the UI feel responsive
-        QTimer.singleShot(100, lambda: self.perform_search(text))
+        
+        self.last_search_query = text.strip()
+        self.search_timer.stop()
+        self.search_timer.start(300)  # 300ms delay for debouncing
+
+    def _perform_delayed_search(self):
+        """Perform the actual search after debounce delay"""
+        if self.last_search_query:
+            self.perform_search(self.last_search_query)
 
     def perform_search(self, query: str):
-        """Perform search by fetching only matching headers."""
-        # OPTIMIZATION: Use the memory-efficient search function.
+        """Perform search by fetching only matching headers with timing"""
+        import time
+        start_time = time.time()
+        
         results = self.db.search_note_headers(query)
         self.refresh_notes_list(results)
-
+        
+        search_time = round((time.time() - start_time) * 1000, 1)
         search_type = "AI Search" if self.ai_toggle.isChecked() else "Text Search"
-        self.status_bar.showMessage(f"{search_type}: {len(results)} results for '{query}'")
+        
+        self.status_bar.showMessage(f"{search_type}: {len(results)} results for '{query}' ({search_time}ms)")
+        self.search_time_label.setText(f"Search: {search_time}ms")
 
     def show_about(self):
         QMessageBox.about(self, "About Alem", 
@@ -1070,24 +1175,111 @@ Optimized for productivity and performance
         """Update toolbar buttons based on current formatting"""
         fmt = self.content_editor.currentCharFormat()
         
-        # da bold button
+        # Update bold button
         self.bold_btn.setChecked(fmt.fontWeight() == QFont.Weight.Bold)
         
-        # da italic button
+        # Update italic button
         self.italic_btn.setChecked(fmt.fontItalic())
         
-        # da underline button
-
+        # Update underline button
         self.underline_btn.setChecked(fmt.fontUnderline())
+
+    def update_stats(self):
+        """Update statistics display"""
+        stats = self.db.get_stats()
+        self.notes_count_label.setText(f"Notes: {stats['total_notes']}")
+        self.db_size_label.setText(f"DB: {stats['db_size_kb']} KB")
+
+    def auto_save(self):
+        """Auto-save current note if modified"""
+        if self.current_note and self.save_btn.isEnabled():
+            self.save_note()
+            self.status_bar.showMessage("Auto-saved", 2000)
+
+    def closeEvent(self, event):
+        """Handle application close with auto-save"""
+        if self.current_note and self.save_btn.isEnabled():
+            reply = QMessageBox.question(
+                self, "Unsaved Changes",
+                "You have unsaved changes. Save before closing?",
+                QMessageBox.StandardButton.Save | 
+                QMessageBox.StandardButton.Discard | 
+                QMessageBox.StandardButton.Cancel
+            )
+            
+            if reply == QMessageBox.StandardButton.Save:
+                self.save_note()
+            elif reply == QMessageBox.StandardButton.Cancel:
+                event.ignore()
+                return
+        
+        # Stop timers
+        self.auto_save_timer.stop()
+        self.search_timer.stop()
+        
+        # Save window geometry
+        settings = QApplication.instance().settings if hasattr(QApplication.instance(), 'settings') else None
+        if settings:
+            settings.setValue("geometry", self.saveGeometry())
+            settings.setValue("windowState", self.saveState())
+        
+        event.accept()
 def main():
-    """Main application entry point"""
+    """Main application entry point with enhanced initialization"""
+    import sys
+    from PyQt6.QtCore import QSettings
+    
+    # Set up application
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
     app.setApplicationName("Alem")
-    app.setApplicationVersion("1.0.0")
-    window = SmartNotesApp()
-    window.show()
-    sys.exit(app.exec())
+    app.setApplicationVersion("1.1.1")
+    app.setApplicationDisplayName("Alem - Smart Notes")
+    app.setOrganizationName("Alem")
+    app.setOrganizationDomain("alem.dev")
+    
+    # Enable high DPI support (Qt6 compatible)
+    try:
+        # Qt6 - these attributes may not exist or be needed
+        if hasattr(Qt.ApplicationAttribute, 'AA_EnableHighDpiScaling'):
+            app.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
+        if hasattr(Qt.ApplicationAttribute, 'AA_UseHighDpiPixmaps'):
+            app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
+    except AttributeError:
+        # Qt6 handles high DPI automatically
+        pass
+    
+    # Set up settings
+    settings = QSettings()
+    app.settings = settings
+    
+    try:
+        # Create and show main window
+        window = SmartNotesApp()
+        
+        # Restore window geometry if available
+        geometry = settings.value("geometry")
+        if geometry:
+            window.restoreGeometry(geometry)
+        
+        window_state = settings.value("windowState")
+        if window_state:
+            window.restoreState(window_state)
+        
+        window.show()
+        
+        # Handle command line arguments
+        if len(sys.argv) > 1 and "--test" in sys.argv:
+            # Test mode - show for 3 seconds then close
+            QTimer.singleShot(3000, app.quit)
+            logger.info("Test mode: Application will close in 3 seconds")
+        
+        sys.exit(app.exec())
+        
+    except Exception as e:
+        logger.error(f"Fatal error: {e}")
+        QMessageBox.critical(None, "Fatal Error", f"Application failed to start:\n{e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

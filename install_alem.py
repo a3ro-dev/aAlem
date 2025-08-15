@@ -32,9 +32,13 @@ def eprint(*args, **kwargs):
 
 
 def print_header():
-    title = "Alem Package Installer"
+    title = "Alem Package Installer v1.1.1"
     if RICH:
-        console.print(Panel.fit(title, subtitle="Automated dependency management", style="bold blue"))
+        console.print(Panel.fit(
+            title, 
+            subtitle="Enhanced dependency management with security updates", 
+            style="bold blue"
+        ))
     else:
         print(title)
         print("=" * len(title))
@@ -146,26 +150,28 @@ def main():
     else:
         print(f"Python {sys.version_info.major}.{sys.version_info.minor} detected")
 
-    # Define package groups
+    # Define package groups with updated versions
     essential = [
-        "PyQt6",
-        "numpy",
+        "PyQt6>=6.6.0",
+        "numpy>=1.24.0",
         # sqlite3 is part of the stdlib; don't install via pip
     ]
 
     optional = [
-        "memory-profiler",
-        "psutil",
-        "Pygments",
-        "pyperclip",
+        "memory-profiler>=0.61.0",
+        "psutil>=5.9.0",
+        "Pygments>=2.17.0",
+        "pyperclip>=1.8.2",
+        "rich>=13.7.0",  # For enhanced console output
+        "packaging>=23.0",  # For version parsing
     ] if args.optional else []
 
     ai = []
     if args.ai:
         ai = [
-            "transformers",
-            "sentence-transformers",
-            "torch",
+            "transformers>=4.36.0",
+            "sentence-transformers>=2.4.0", 
+            "torch>=2.1.0",
         ]
 
     # Decide torch index URL if CPU-only
