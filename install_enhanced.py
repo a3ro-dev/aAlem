@@ -148,14 +148,22 @@ def create_desktop_shortcut():
         shortcut_path = os.path.join(desktop, "Alem.lnk")
         target = sys.executable
         arguments = str(Path(__file__).parent / "Alem.py")
-        icon = str(Path(__file__).parent / "alem.png")
+        icon_path = Path(__file__).parent / "alem.png"
+        
+        # Verify icon exists
+        if not icon_path.exists():
+            print(f"⚠️  Warning: App icon not found at {icon_path}")
+            icon = ""  # Use default icon
+        else:
+            icon = str(icon_path)
         
         shell = Dispatch('WScript.Shell')
         shortcut = shell.CreateShortCut(shortcut_path)
         shortcut.Targetpath = target
         shortcut.Arguments = arguments
         shortcut.WorkingDirectory = str(Path(__file__).parent)
-        shortcut.IconLocation = icon
+        if icon:
+            shortcut.IconLocation = icon
         shortcut.save()
         
         print("✅ Desktop shortcut created")

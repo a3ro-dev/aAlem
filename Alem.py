@@ -14,12 +14,12 @@ import time
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QSplitter, QListWidget, QListWidgetItem, QTextEdit, QLineEdit,
-    QPushButton, QLabel, QStatusBar, QMessageBox,
+    QPushButton, QLabel, QStatusBar, QMessageBox, QStyle,
     QDialog, QDialogButtonBox, QFormLayout, QFrame,
     QTabWidget, QScrollArea, QGroupBox, QCheckBox, QSpinBox,
     QComboBox, QSlider, QTextBrowser, QProgressBar
 )
-from PyQt6.QtCore import Qt, QTimer, QStandardPaths, QThread, pyqtSignal, QPropertyAnimation, QEasingCurve, QRect
+from PyQt6.QtCore import Qt, QTimer, QStandardPaths, QThread, pyqtSignal, QPropertyAnimation, QEasingCurve, QRect, QSize
 from PyQt6.QtGui import QFont, QAction, QKeySequence, QIcon, QShortcut, QPixmap, QPainter, QBrush, QColor
 
 # Try to import WebEngine for better preview
@@ -887,21 +887,24 @@ class SmartNotesApp(QMainWindow):
         self.preview_timer.setSingleShot(True)
         self.preview_timer.timeout.connect(self.render_preview)
 
-        # Enhanced window properties
+        # Enhanced window properties for proper resizing and snapping
         self.setWindowTitle("Alem - Smart Notes")
         self.setGeometry(100, 100, 1400, 900)
+        self.setMinimumSize(800, 600)  # Set minimum size for resizing
         
-        # Set window icon
+        # Set window icon properly
         try:
             icon_path = Path(__file__).parent / "alem.png"
             if icon_path.exists():
                 self.setWindowIcon(QIcon(str(icon_path)))
-        except Exception:
-            pass
+                # Also set taskbar icon on Windows
+                if hasattr(self, 'setWindowIcon'):
+                    self.setWindowIcon(QIcon(str(icon_path)))
+        except Exception as e:
+            logger.warning(f"Could not set app icon: {e}")
         
-        # Apply window transparency and glassmorphism
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+        # Enable proper window resizing and snapping
+        self.setWindowFlags(Qt.WindowType.Window)  # Standard window with title bar
         
         self.setup_ui()
         self.setup_shortcuts()
@@ -924,6 +927,23 @@ class SmartNotesApp(QMainWindow):
         self.analytics_timer = QTimer()
         self.analytics_timer.timeout.connect(self.update_analytics)
         self.analytics_timer.start(1000)  # Update every second
+
+    def set_status(self, message: str, timeout_ms: int = 0):
+        """Show a status message regardless of status bar implementation.
+        If using the custom QWidget status area, updates the label.
+        If a real QStatusBar exists, also calls showMessage.
+        """
+        try:
+            if hasattr(self, 'status_message') and isinstance(self.status_message, QLabel):
+                self.status_message.setText(message)
+            if hasattr(self, 'status_bar') and hasattr(self.status_bar, 'showMessage'):
+                # QStatusBar API supports optional timeout
+                if timeout_ms:
+                    self.status_bar.showMessage(message, int(timeout_ms))
+                else:
+                    self.status_bar.showMessage(message)
+        except Exception as e:
+            logger.debug(f"Failed to set status message: {e}")
 
     def setup_shortcuts(self):
         """Setup Windows-style keyboard shortcuts"""
@@ -966,31 +986,21 @@ class SmartNotesApp(QMainWindow):
         QShortcut(QKeySequence.StandardKey.Quit, self, self.close)
 
     def setup_ui(self):
-        """Setup the enhanced glassmorphism UI"""
-        # Create custom title bar
-        self.title_bar = self.create_title_bar()
-        
-        # Apply modern glassmorphism theme with enhanced transparency
+        """Setup the UI with native window frame and status bar."""
+        # Theme
         self.setStyleSheet("""
             QMainWindow {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                    stop:0 rgba(10, 15, 28, 0.95), 
-                    stop:0.3 rgba(13, 20, 33, 0.92), 
-                    stop:0.7 rgba(17, 24, 39, 0.94), 
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(10, 15, 28, 0.95),
+                    stop:0.3 rgba(13, 20, 33, 0.92),
+                    stop:0.7 rgba(17, 24, 39, 0.94),
                     stop:1 rgba(30, 41, 59, 0.96));
-                border: 1px solid rgba(59, 130, 246, 0.2);
-                border-radius: 16px;
                 color: #e2e8f0;
             }
-            QWidget {
-                background: transparent;
-                color: #e2e8f0;
-                font-family: 'Segoe UI', 'San Francisco', system-ui, sans-serif;
-                font-weight: 400;
-            }
+            QWidget { color: #e2e8f0; }
         """)
 
-        # Create central widget with padding for rounded corners
+        # Central widget
         central_widget = QWidget()
         central_widget.setContentsMargins(8, 8, 8, 8)
         self.setCentralWidget(central_widget)
@@ -999,35 +1009,27 @@ class SmartNotesApp(QMainWindow):
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-        
-        # Add title bar
-        main_layout.addWidget(self.title_bar)
-        
-        # Content layout
+
+        # Content area
         content_layout = QHBoxLayout()
         content_layout.setContentsMargins(8, 8, 8, 8)
-        
+
         splitter = QSplitter(Qt.Orientation.Horizontal)
         content_layout.addWidget(splitter)
 
-        # Left panel (notes list and search)
-        left_panel = self.create_left_panel()
-        splitter.addWidget(left_panel)
-
-        # Right panel (note editor with tabs)
-        right_panel = self.create_right_panel()
-        splitter.addWidget(right_panel)
-
-        # Set splitter proportions
+        # Left panel
+        splitter.addWidget(self.create_left_panel())
+        # Right panel
+        splitter.addWidget(self.create_right_panel())
         splitter.setSizes([400, 1000])
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        
+
         main_layout.addLayout(content_layout)
 
-        # Enhanced status bar with real-time analytics
+        # Status bar
         self.status_bar = self.create_status_bar()
-        main_layout.addWidget(self.status_bar)
+        self.setStatusBar(self.status_bar)
 
     def create_title_bar(self):
         """Create custom title bar with glassmorphism"""
@@ -1095,150 +1097,55 @@ class SmartNotesApp(QMainWindow):
         return title_bar
 
     def create_status_bar(self):
-        """Create enhanced status bar with real-time analytics"""
-        status_widget = QWidget()
-        status_widget.setFixedHeight(32)
-        status_widget.setStyleSheet("""
-            QWidget {
+        """Create a clean status bar with working analytics."""
+        bar = QStatusBar()
+        bar.setStyleSheet("""
+            QStatusBar {
                 background: rgba(15, 23, 42, 0.95);
+                color: #94a3b8;
                 border-top: 1px solid rgba(51, 65, 85, 0.3);
-                border-radius: 0 0 12px 12px;
                 font-family: 'Segoe UI', system-ui, sans-serif;
                 font-size: 11px;
-                font-weight: 500;
+                padding: 4px 8px;
             }
             QLabel {
-                color: #64748b;
-                padding: 0 8px;
+                color: #94a3b8;
+                padding: 0 6px;
                 background: rgba(30, 41, 59, 0.6);
                 border: 1px solid rgba(51, 65, 85, 0.3);
                 border-radius: 4px;
                 margin: 2px;
             }
-            QProgressBar {
-                background: rgba(30, 41, 59, 0.6);
-                border: 1px solid rgba(51, 65, 85, 0.3);
-                border-radius: 4px;
-                height: 16px;
-                text-align: center;
-                color: #94a3b8;
-                font-weight: 600;
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 rgba(59, 130, 246, 0.6), stop:1 rgba(139, 92, 246, 0.6));
-                border-radius: 3px;
-            }
         """)
-        
-        layout = QHBoxLayout(status_widget)
-        layout.setContentsMargins(12, 4, 12, 4)
-        layout.setSpacing(8)
-        
-        # Main status message
-        self.status_message = QLabel("Ready • AI Enhanced • Real-time Analytics")
-        self.status_message.setStyleSheet("color: #94a3b8; border: none; background: transparent;")
-        layout.addWidget(self.status_message)
-        
-        layout.addStretch()
-        
-        # Real-time analytics
+
+        # Working analytics widgets
         self.analytics_notes = QLabel("Notes: 0")
-        self.analytics_words = QLabel("Words: 0")
-        self.analytics_chars = QLabel("Chars: 0")
-        self.analytics_format = QLabel("HTML")
+        self.analytics_format = QLabel("Format: -")
         self.analytics_redis = QLabel("Cache: Off")
-        self.analytics_memory = QLabel("RAM: 0 MB")
-        self.analytics_performance = QLabel("⚡ Fast")
-        
-        # Add progress bar for operations
+        self.analytics_status = QLabel("Ready")
+
+        # Progress for long operations
         self.operation_progress = QProgressBar()
         self.operation_progress.setVisible(False)
         self.operation_progress.setFixedWidth(120)
-        
-        analytics_widgets = [
-            self.analytics_notes, self.analytics_words, self.analytics_chars,
-            self.analytics_format, self.analytics_redis, self.analytics_memory,
-            self.analytics_performance, self.operation_progress
-        ]
-        
-        for widget in analytics_widgets:
-            layout.addWidget(widget)
-        
-        return status_widget
-        self.setWindowTitle("Alem")
-        self.setGeometry(100, 100, 1400, 900)
-        # Set window icon
-        try:
-            icon_path = Path(__file__).parent / "alem.png"
-            if icon_path.exists():
-                self.setWindowIcon(QIcon(str(icon_path)))
-        except Exception:
-            pass
-        
-        # Modern glassmorphism cyberpunk theme
-        self.setStyleSheet("""
-            QMainWindow {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1, 
-                    stop:0 #0a0f1c, stop:0.5 #0d1421, stop:1 #111827);
-                color: #e2e8f0;
+        self.operation_progress.setStyleSheet("""
+            QProgressBar {
+                background: rgba(30, 41, 59, 0.6); 
+                border: 1px solid rgba(51, 65, 85, 0.3); 
+                border-radius: 4px; 
+                height: 14px;
+            } 
+            QProgressBar::chunk {
+                background: rgba(59, 130, 246, 0.6); 
+                border-radius: 3px;
             }
         """)
 
-        # Create menu bar
-        self.create_menu_bar()
-
-        # Central widget with splitter
-        central_widget = QWidget()
-        central_widget.setStyleSheet("""
-            QWidget { 
-                background: transparent; 
-                color: #e2e8f0;
-            }
-        """)
-        self.setCentralWidget(central_widget)
-
-        # Main layout
-        layout = QHBoxLayout(central_widget)
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        layout.addWidget(splitter)
-
-        # Left panel (notes list and search)
-        left_panel = self.create_left_panel()
-        splitter.addWidget(left_panel)
-    
-
-        # Right panel (note editor with tabs)
-        right_panel = self.create_right_panel()
-        splitter.addWidget(right_panel)
-
-        # Set splitter proportions (make it resizable)
-        splitter.setSizes([400, 1000])
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-
-        # Status bar
-        self.status_bar = QStatusBar()
-        self.status_bar.setStyleSheet("""
-            QStatusBar {
-                background: rgba(15, 23, 42, 0.9);
-                color: #64748b;
-                border-top: 1px solid rgba(51, 65, 85, 0.3);
-                font-family: 'Segoe UI', system-ui, sans-serif;
-                font-size: 11px;
-                padding: 6px 12px;
-            }
-        """)
-        self.setStatusBar(self.status_bar)
-        # Analytics widgets
-        self.analytics_notes = QLabel("Notes: 0")
-        self.analytics_format = QLabel("Fmt: html | Unlocked")
-        self.analytics_words = QLabel("0 words")
-        self.analytics_redis = QLabel("Redis: off")
-        for w in [self.analytics_notes, self.analytics_format, self.analytics_words, self.analytics_redis]:
-            w.setStyleSheet("color: #94a3b8; padding: 0 8px;")
-            self.status_bar.addPermanentWidget(w)
-        self.status_bar.showMessage("Ready • AI Enhanced • Real-time Search")
+        for w in [self.analytics_notes, self.analytics_format, self.analytics_redis, self.analytics_status, self.operation_progress]:
+            bar.addPermanentWidget(w)
+        bar.showMessage("Ready • Alem Smart Notes")
+        return bar
+        # This duplicate UI setup code has been removed - UI is now handled in setup_ui()
     
     def create_menu_bar(self):
         """Create the menu bar"""
@@ -1362,8 +1269,14 @@ class SmartNotesApp(QMainWindow):
         
         header_layout = QVBoxLayout(header_widget)
         
-        app_logo = QLabel("🌟")
-        app_logo.setStyleSheet("font-size: 32px; color: #93c5fd;")
+        app_logo = QLabel()
+        try:
+            icon_path = Path(__file__).parent / "alem.png"
+            if icon_path.exists():
+                pm = QPixmap(str(icon_path))
+                app_logo.setPixmap(pm.scaled(QSize(40, 40), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        except Exception:
+            pass
         app_logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
         header_layout.addWidget(app_logo)
         
@@ -1416,9 +1329,7 @@ class SmartNotesApp(QMainWindow):
         search_input_layout = QHBoxLayout()
         search_input_layout.setSpacing(8)
         
-        search_icon = QLabel("🔍")
-        search_icon.setStyleSheet("font-size: 16px; color: #64748b;")
-        search_input_layout.addWidget(search_icon)
+    # Removed emoji icon for cleaner look
         
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search notes with AI...")
@@ -1594,57 +1505,66 @@ class SmartNotesApp(QMainWindow):
         primary_layout = QHBoxLayout()
         primary_layout.setSpacing(8)
         
-        self.new_note_btn = QPushButton("✨ New Note")
+        self.new_note_btn = QPushButton("New Note")
         self.new_note_btn.clicked.connect(self.new_note)
+        try:
+            self.new_note_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileIcon))
+            self.new_note_btn.setIconSize(QSize(18, 18))
+        except Exception:
+            pass
         self.new_note_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 rgba(59, 130, 246, 0.3), stop:1 rgba(139, 92, 246, 0.2));
                 color: #93c5fd;
                 border: 1px solid rgba(59, 130, 246, 0.4);
-                padding: 14px 20px;
-                border-radius: 10px;
+                padding: 12px 16px;
+                border-radius: 8px;
                 font-weight: 600;
-                font-size: 13px;
+                font-size: 12px;
                 font-family: 'Segoe UI', system-ui, sans-serif;
+                min-height: 20px;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 rgba(59, 130, 246, 0.4), stop:1 rgba(139, 92, 246, 0.3));
                 color: #bfdbfe;
                 border: 1px solid rgba(59, 130, 246, 0.5);
-                transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
             }
             QPushButton:pressed {
-                transform: translateY(0px);
-                box-shadow: 0 2px 6px rgba(59, 130, 246, 0.2);
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(59, 130, 246, 0.5), stop:1 rgba(139, 92, 246, 0.4));
             }
         """)
         primary_layout.addWidget(self.new_note_btn)
         
-        self.delete_note_btn = QPushButton("🗑️")
+        self.delete_note_btn = QPushButton("Delete")
         self.delete_note_btn.clicked.connect(self.delete_note)
-        self.delete_note_btn.setFixedSize(52, 52)
+        self.delete_note_btn.setFixedSize(60, 40)
+        try:
+            self.delete_note_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
+            self.delete_note_btn.setIconSize(QSize(16, 16))
+        except Exception:
+            pass
         self.delete_note_btn.setStyleSheet("""
             QPushButton {
                 background: rgba(239, 68, 68, 0.2);
                 color: #ef4444;
                 border: 1px solid rgba(239, 68, 68, 0.3);
-                padding: 12px;
-                border-radius: 10px;
+                padding: 8px 12px;
+                border-radius: 8px;
                 font-weight: 600;
-                font-size: 16px;
+                font-size: 11px;
+                font-family: 'Segoe UI', system-ui, sans-serif;
+                min-height: 20px;
             }
             QPushButton:hover {
                 background: rgba(239, 68, 68, 0.3);
                 color: #f87171;
                 border: 1px solid rgba(239, 68, 68, 0.4);
-                transform: scale(1.1);
-                box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
             }
             QPushButton:pressed {
-                transform: scale(1.05);
+                background: rgba(239, 68, 68, 0.4);
             }
         """)
         primary_layout.addWidget(self.delete_note_btn)
@@ -1655,9 +1575,18 @@ class SmartNotesApp(QMainWindow):
         secondary_layout = QHBoxLayout()
         secondary_layout.setSpacing(6)
         
-        self.import_btn = QPushButton("📥 Import")
-        self.export_btn = QPushButton("📤 Export")
-        self.settings_btn = QPushButton("⚙️ Settings")
+        self.import_btn = QPushButton("Import")
+        self.export_btn = QPushButton("Export")
+        self.settings_btn = QPushButton("Settings")
+        # Add standard icons where available
+        try:
+            self.import_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton))
+            self.export_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
+            self.settings_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
+            for b in [self.import_btn, self.export_btn, self.settings_btn]:
+                b.setIconSize(QSize(14, 14))
+        except Exception:
+            pass
         
         for btn in [self.import_btn, self.export_btn, self.settings_btn]:
             btn.setStyleSheet("""
@@ -1665,17 +1594,17 @@ class SmartNotesApp(QMainWindow):
                     background: rgba(71, 85, 105, 0.3);
                     color: #94a3b8;
                     border: 1px solid rgba(71, 85, 105, 0.4);
-                    padding: 8px 12px;
-                    border-radius: 8px;
+                    padding: 6px 10px;
+                    border-radius: 6px;
                     font-weight: 500;
-                    font-size: 11px;
+                    font-size: 10px;
                     font-family: 'Segoe UI', system-ui, sans-serif;
+                    min-height: 16px;
                 }
                 QPushButton:hover {
                     background: rgba(71, 85, 105, 0.4);
                     color: #cbd5e1;
                     border: 1px solid rgba(71, 85, 105, 0.5);
-                    transform: translateY(-1px);
                 }
             """)
             secondary_layout.addWidget(btn)
@@ -1711,14 +1640,12 @@ class SmartNotesApp(QMainWindow):
         """)
         stats_layout.addWidget(stats_title)
 
-        self.cache_label = QLabel("💾 Cache: Ready")
-        self.search_time_label = QLabel("⚡ Search: <20ms")
-        self.notes_count_label = QLabel("📝 Notes: 0")
-        self.db_size_label = QLabel("💽 Database: 0 KB")
-        self.session_time_label = QLabel("⏱️ Session: 0m")
+        # Stats labels for the left panel
+        self.cache_label = QLabel("Cache: Ready")
+        self.notes_count_label = QLabel("Notes: 0")
+        self.db_size_label = QLabel("Database: 0 KB")
 
-        for label in [self.cache_label, self.search_time_label, self.notes_count_label, 
-                     self.db_size_label, self.session_time_label]:
+        for label in [self.cache_label, self.notes_count_label, self.db_size_label]:
             label.setFont(QFont("Segoe UI", 10, QFont.Weight.Medium))
             label.setStyleSheet("""
                 QLabel { 
@@ -1771,8 +1698,7 @@ class SmartNotesApp(QMainWindow):
         
         # Title input with enhanced styling
         title_layout = QHBoxLayout()
-        title_icon = QLabel("📝")
-        title_icon.setStyleSheet("font-size: 18px; color: #93c5fd;")
+        title_icon = QLabel()
         title_layout.addWidget(title_icon)
 
         self.title_input = QLineEdit()
@@ -1839,7 +1765,7 @@ class SmartNotesApp(QMainWindow):
         meta_layout.addLayout(tags_container)
         
         # Lock button
-        self.lock_btn = QPushButton("🔓")
+        self.lock_btn = QPushButton("Unlock")
         self.lock_btn.setFixedSize(40, 40)
         self.lock_btn.setCheckable(True)
         self.lock_btn.clicked.connect(self.toggle_lock_current)
@@ -1917,19 +1843,19 @@ class SmartNotesApp(QMainWindow):
         format_group.addWidget(QLabel("|"))
         toolbar_layout.addLayout(format_group)
 
-        # Text formatting buttons
+        # Text formatting buttons with better icons
         formatting_buttons = [
             ("B", "Bold", self.toggle_bold),
             ("I", "Italic", self.toggle_italic),
             ("U", "Underline", self.toggle_underline),
             ("", "sep", None),
-            ("⬅", "Align Left", lambda: self.set_alignment(Qt.AlignmentFlag.AlignLeft)),
-            ("⬌", "Center", lambda: self.set_alignment(Qt.AlignmentFlag.AlignCenter)),
-            ("➡", "Align Right", lambda: self.set_alignment(Qt.AlignmentFlag.AlignRight)),
+            ("L", "Align Left", lambda: self.set_alignment(Qt.AlignmentFlag.AlignLeft)),
+            ("C", "Center", lambda: self.set_alignment(Qt.AlignmentFlag.AlignCenter)),
+            ("R", "Align Right", lambda: self.set_alignment(Qt.AlignmentFlag.AlignRight)),
             ("", "sep", None),
             ("🔗", "Insert Link", self.insert_link),
             ("📷", "Insert Image", self.insert_image),
-            ("📋", "Insert Code", self.insert_code_block),
+            ("</>", "Insert Code", self.insert_code_block),
         ]
         
         self.format_buttons = {}
@@ -1959,7 +1885,10 @@ class SmartNotesApp(QMainWindow):
                     border: 1px solid rgba(71, 85, 105, 0.4);
                     border-radius: 6px;
                     font-weight: 600;
-                    font-size: 12px;
+                    font-size: 11px;
+                    font-family: 'Segoe UI', system-ui, sans-serif;
+                    min-width: 28px;
+                    min-height: 28px;
                 }
                 QPushButton:checked {
                     background: rgba(59, 130, 246, 0.3);
@@ -1969,7 +1898,7 @@ class SmartNotesApp(QMainWindow):
                 QPushButton:hover {
                     background: rgba(71, 85, 105, 0.4);
                     color: #cbd5e1;
-                    transform: scale(1.1);
+                    transform: translateY(-1px);
                 }
             """)
             toolbar_layout.addWidget(btn)
@@ -2162,32 +2091,38 @@ class SmartNotesApp(QMainWindow):
         actions_layout.addStretch()
         
         # Action buttons
-        self.save_btn = QPushButton("💾 Save Note")
+        self.save_btn = QPushButton("Save Note")
         self.save_btn.clicked.connect(self.save_note)
         self.save_btn.setEnabled(False)
+        try:
+            self.save_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
+            self.save_btn.setIconSize(QSize(20,20))
+        except Exception:
+            pass
         self.save_btn.setStyleSheet("""
             QPushButton {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 rgba(34, 197, 94, 0.3), stop:1 rgba(59, 130, 246, 0.2));
                 color: #22c55e;
                 border: 1px solid rgba(34, 197, 94, 0.4);
-                padding: 14px 28px;
-                border-radius: 10px;
+                padding: 10px 20px;
+                border-radius: 8px;
                 font-weight: 600;
-                font-size: 14px;
+                font-size: 12px;
                 font-family: 'Segoe UI', system-ui, sans-serif;
+                min-height: 20px;
             }
             QPushButton:hover:enabled {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 rgba(34, 197, 94, 0.4), stop:1 rgba(59, 130, 246, 0.3));
                 color: #4ade80;
                 border: 1px solid rgba(34, 197, 94, 0.5);
-                transform: translateY(-2px);
-                box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
+                transform: translateY(-1px);
+                box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
             }
             QPushButton:pressed:enabled {
                 transform: translateY(0px);
-                box-shadow: 0 2px 6px rgba(34, 197, 94, 0.2);
+                box-shadow: 0 1px 4px rgba(34, 197, 94, 0.2);
             }
             QPushButton:disabled {
                 background: rgba(71, 85, 105, 0.2);
@@ -2413,63 +2348,61 @@ Tips:
             self.redis_flush_timer.start(int(flush_s * 1000))
 
     def update_analytics(self):
-        """Update real-time analytics"""
+        """Update real-time analytics with working widgets"""
         try:
-            import psutil
-            import sys
+            # Notes count
+            stats = self.db.get_stats()
+            self.analytics_notes.setText(f"Notes: {stats.get('total_notes', 0)}")
             
-            # Memory usage
-            process = psutil.Process()
-            memory_mb = round(process.memory_info().rss / 1024 / 1024, 1)
-            self.analytics_memory.setText(f"RAM: {memory_mb} MB")
-        except:
-            self.analytics_memory.setText("RAM: N/A")
-        
-        # Notes count
-        stats = self.db.get_stats()
-        self.analytics_notes.setText(f"Notes: {stats.get('total_notes', 0)}")
-        
-        # Current note analytics
-        if self.current_note:
-            text = self.content_editor.toPlainText()
-            words = len([w for w in text.split() if w.strip()])
-            chars = len(text)
-            
-            self.analytics_words.setText(f"Words: {words}")
-            self.analytics_chars.setText(f"Chars: {chars}")
-            self.word_count_label.setText(f"{words} words, {chars} chars")
-            
-            # Format and lock status
-            format_text = self.current_note.content_format.upper()
-            lock_status = "🔒" if self.current_note.locked else "🔓"
-            self.analytics_format.setText(f"{format_text} {lock_status}")
-            
-            # Update lock button
-            self.lock_btn.setChecked(self.current_note.locked)
-            self.lock_btn.setText("🔒" if self.current_note.locked else "🔓")
-        else:
-            self.analytics_words.setText("Words: 0")
-            self.analytics_chars.setText("Chars: 0")
-            self.word_count_label.setText("0 words, 0 chars")
-            self.analytics_format.setText("No Note")
-        
-        # Redis status
-        if self.redis_cache.enabled:
-            dirty_count = self.redis_cache.dirty_count()
-            self.analytics_redis.setText(f"Cache: {dirty_count} dirty")
-        else:
-            self.analytics_redis.setText("Cache: Off")
-        
-        # Performance indicator
-        if hasattr(self, 'last_search_time'):
-            if self.last_search_time < 50:
-                self.analytics_performance.setText("⚡ Fast")
-            elif self.last_search_time < 200:
-                self.analytics_performance.setText("⚡ Good")
+            # Current note analytics
+            if self.current_note:
+                text = self.content_editor.toPlainText()
+                words = len([w for w in text.split() if w.strip()])
+                chars = len(text)
+                
+                # Update word count label in editor
+                if hasattr(self, 'word_count_label'):
+                    self.word_count_label.setText(f"{words} words, {chars} chars")
+                
+                # Format and lock status
+                format_text = self.current_note.content_format.upper()
+                lock_status = "Locked" if self.current_note.locked else "Unlocked"
+                self.analytics_format.setText(f"Format: {format_text} | {lock_status}")
+                
+                # Update lock button
+                if hasattr(self, 'lock_btn'):
+                    self.lock_btn.setChecked(self.current_note.locked)
+                    self.lock_btn.setText("🔒" if self.current_note.locked else "🔓")
             else:
-                self.analytics_performance.setText("⚡ Slow")
-        else:
-            self.analytics_performance.setText("⚡ Ready")
+                if hasattr(self, 'word_count_label'):
+                    self.word_count_label.setText("0 words, 0 chars")
+                self.analytics_format.setText("Format: - | -")
+            
+            # Redis status
+            if self.redis_cache.enabled:
+                dirty_count = self.redis_cache.dirty_count()
+                self.analytics_redis.setText(f"Cache: {dirty_count} dirty")
+            else:
+                self.analytics_redis.setText("Cache: Off")
+            
+            # Status indicator
+            if hasattr(self, 'last_search_time'):
+                if self.last_search_time < 50:
+                    self.analytics_status.setText("Fast")
+                elif self.last_search_time < 200:
+                    self.analytics_status.setText("Good")
+                else:
+                    self.analytics_status.setText("Slow")
+            else:
+                self.analytics_status.setText("Ready")
+                
+        except Exception as e:
+            logger.error(f"Error updating analytics: {e}")
+            # Set fallback values
+            self.analytics_notes.setText("Notes: ?")
+            self.analytics_format.setText("Format: - | -")
+            self.analytics_redis.setText("Cache: error")
+            self.analytics_status.setText("Error")
 
     # OPTIMIZATION: Lazy loading of note headers
     def load_note_headers(self):
@@ -2547,7 +2480,7 @@ Tips:
                 self.content_editor.setPlainText(content_text)
             
             self.save_btn.setEnabled(False)
-            self.status_bar.showMessage(f"Loaded: '{note.title}'")
+            self.set_status(f"Loaded: '{note.title}'")
             self.render_preview()
             self.update_analytics()
 
@@ -2601,11 +2534,9 @@ Tips:
             self.redis_cache.cache_note(self.current_note)
         else:
             self.db.save_note(self.current_note)
-        self.load_note_headers() 
+        self.load_note_headers()
         self.save_btn.setEnabled(False)
-
-        if hasattr(self.status_bar, 'showMessage'):
-            self.status_bar.showMessage(f"Saved: '{self.current_note.title}'")
+        self.set_status(f"Saved: '{self.current_note.title}'")
         self.update_analytics()
 
     def delete_note(self):
@@ -2629,7 +2560,7 @@ Tips:
             self.db.delete_note(note_id)
             self.load_note_headers() 
             self.clear_editor()
-            self.status_bar.showMessage(f"Deleted: '{title}'")
+            self.set_status(f"Deleted: '{title}'")
             self.update_analytics()
 
     def clear_editor(self):
@@ -2681,24 +2612,25 @@ Tips:
             
             search_type = "🤖 AI Search" if self.ai_toggle.isChecked() else "🔍 Text Search"
             
-            self.status_message.setText(f"{search_type}: {len(results)} results for '{query}' ({search_time}ms)")
-            self.search_time_label.setText(f"⚡ Search: {search_time}ms")
+            self.set_status(f"{search_type}: {len(results)} results for '{query}' ({search_time}ms)")
+            # Update search time in status bar
+            self.set_status(f"Search completed in {search_time}ms", 2000)
             
             # Update performance indicator
             if search_time < 50:
-                performance = "⚡ Blazing"
+                performance = "Blazing"
             elif search_time < 100:
-                performance = "⚡ Fast"
+                performance = "Fast"
             elif search_time < 300:
-                performance = "⚡ Good"
+                performance = "Good"
             else:
-                performance = "⚡ Slow"
+                performance = "Slow"
             
-            self.analytics_performance.setText(performance)
+            self.analytics_status.setText(performance)
             
         except Exception as e:
             logger.error(f"Search error: {e}")
-            self.status_message.setText(f"Search error: {e}")
+            self.set_status(f"Search error: {e}")
         finally:
             self.operation_progress.setVisible(False)
             self.update_analytics()
@@ -2981,34 +2913,7 @@ Optimized for productivity and performance
             else:
                 self.preview_view.setHtml(content)
 
-    def update_analytics(self):
-        """Update analytics display with error handling"""
-        try:
-            # notes count
-            stats = self.db.get_stats()
-            self.analytics_notes.setText(f"Notes: {stats.get('total_notes',0)}")
-            # current note stats
-            if self.current_note:
-                text = self.content_editor.toPlainText()
-                words = len([w for w in text.split() if w.strip()])
-                self.analytics_words.setText(f"{words} words")
-                lock = "Locked" if self.current_note.locked else "Unlocked"
-                self.analytics_format.setText(f"Fmt: {self.current_note.content_format} | {lock}")
-            else:
-                self.analytics_words.setText("0 words")
-                self.analytics_format.setText("Fmt: - | -")
-            # redis
-            if self.redis_cache.enabled:
-                self.analytics_redis.setText(f"Redis: on ({self.redis_cache.dirty_count()} dirty)")
-            else:
-                self.analytics_redis.setText("Redis: off")
-        except Exception as e:
-            logger.error(f"Error updating analytics: {e}")
-            # Set fallback values
-            self.analytics_notes.setText("Notes: ?")
-            self.analytics_words.setText("? words") 
-            self.analytics_format.setText("Fmt: - | -")
-            self.analytics_redis.setText("Redis: error")
+    # This method is now handled by the main update_analytics method above
 
     def toggle_lock_current(self):
         if not self.current_note:
@@ -3074,25 +2979,37 @@ Optimized for productivity and performance
             return
         try:
             flushed, errors = self.redis_cache.flush_to_db(self.db)
-            if flushed and hasattr(self.status_bar, 'showMessage'):
-                self.status_bar.showMessage(f"Flushed {flushed} note(s) to DB from cache", 2000)
+            if flushed:
+                self.set_status(f"Flushed {flushed} note(s) to DB from cache", 2000)
             self.update_analytics()
         except Exception as e:
             logger.error(f"Cache flush failed: {e}")
 
     def update_stats(self):
         """Update statistics display"""
-        stats = self.db.get_stats()
-        self.notes_count_label.setText(f"Notes: {stats['total_notes']}")
-        self.db_size_label.setText(f"DB: {stats['db_size_kb']} KB")
+        try:
+            stats = self.db.get_stats()
+            self.notes_count_label.setText(f"Notes: {stats['total_notes']}")
+            self.db_size_label.setText(f"Database: {stats['db_size_kb']} KB")
+            
+            # Update cache status
+            if self.redis_cache.enabled:
+                dirty_count = self.redis_cache.dirty_count()
+                self.cache_label.setText(f"Cache: {dirty_count} dirty")
+            else:
+                self.cache_label.setText("Cache: Off")
+        except Exception as e:
+            logger.error(f"Error updating stats: {e}")
+            self.notes_count_label.setText("Notes: ?")
+            self.db_size_label.setText("Database: ? KB")
+            self.cache_label.setText("Cache: Error")
 
     def auto_save(self):
         """Auto-save current note if modified"""
         try:
             if self.current_note and self.save_btn.isEnabled():
                 self.save_note()
-                if hasattr(self.status_bar, 'showMessage'):
-                    self.status_bar.showMessage("Auto-saved", 2000)
+                self.set_status("Auto-saved", 2000)
         except Exception as e:
             logger.error(f"Auto-save failed: {e}")
 
@@ -3154,8 +3071,13 @@ def main():
         icon_path = Path(__file__).parent / "alem.png"
         if icon_path.exists():
             app.setWindowIcon(QIcon(str(icon_path)))
-    except Exception:
-        pass
+            # Set taskbar icon on Windows
+            if hasattr(app, 'setWindowIcon'):
+                app.setWindowIcon(QIcon(str(icon_path)))
+        else:
+            logger.warning(f"App icon not found at: {icon_path}")
+    except Exception as e:
+        logger.warning(f"Could not set app icon: {e}")
     
     # High DPI support
     try:
