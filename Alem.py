@@ -1349,7 +1349,6 @@ class SmartNotesApp(QMainWindow):
                 border: 1px solid rgba(59, 130, 246, 0.5);
                 background: rgba(15, 23, 42, 0.9);
                 color: #f1f5f9;
-                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
             }
             QLineEdit::placeholder {
                 color: #64748b;
@@ -1377,13 +1376,13 @@ class SmartNotesApp(QMainWindow):
                     stop:0 rgba(34, 197, 94, 0.3), stop:1 rgba(59, 130, 246, 0.3));
                 color: #22c55e;
                 border: 1px solid rgba(34, 197, 94, 0.4);
-                box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.1);
+                /* box-shadow removed for compatibility */
             }
             QPushButton:hover {
                 background: rgba(59, 130, 246, 0.2);
                 color: #3b82f6;
                 border: 1px solid rgba(59, 130, 246, 0.3);
-                transform: scale(1.05);
+                /* transform removed for compatibility */
             }
         """)
         search_input_layout.addWidget(self.ai_toggle)
@@ -1457,14 +1456,13 @@ class SmartNotesApp(QMainWindow):
                     stop:0 rgba(59, 130, 246, 0.3), stop:1 rgba(139, 92, 246, 0.2));
                 color: #93c5fd;
                 border: 1px solid rgba(59, 130, 246, 0.4);
-                box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+                /* box-shadow removed for compatibility */
             }
             QListWidget::item:hover {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 rgba(71, 85, 105, 0.4), stop:1 rgba(59, 130, 246, 0.2));
                 color: #f1f5f9;
                 border: 1px solid rgba(71, 85, 105, 0.5);
-                transform: translateY(-1px);
             }
             QScrollBar:vertical {
                 background: rgba(15, 23, 42, 0.4);
@@ -1719,7 +1717,6 @@ class SmartNotesApp(QMainWindow):
                 border: 1px solid rgba(59, 130, 246, 0.5);
                 background: rgba(15, 23, 42, 0.9);
                 color: #f8fafc;
-                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
             }
             QLineEdit::placeholder {
                 color: #64748b;
@@ -1784,7 +1781,7 @@ class SmartNotesApp(QMainWindow):
             }
             QPushButton:hover {
                 background: rgba(59, 130, 246, 0.3);
-                transform: scale(1.1);
+                /* transform removed for compatibility */
             }
         """)
         meta_layout.addWidget(self.lock_btn)
@@ -1898,7 +1895,6 @@ class SmartNotesApp(QMainWindow):
                 QPushButton:hover {
                     background: rgba(71, 85, 105, 0.4);
                     color: #cbd5e1;
-                    transform: translateY(-1px);
                 }
             """)
             toolbar_layout.addWidget(btn)
@@ -1963,7 +1959,7 @@ class SmartNotesApp(QMainWindow):
                 background: rgba(59, 130, 246, 0.3);
                 color: #93c5fd;
                 border: 1px solid rgba(59, 130, 246, 0.4);
-                box-shadow: 0 2px 8px rgba(59, 130, 246, 0.2);
+                /* box-shadow removed for compatibility */
             }
             QTabBar::tab:hover:!selected {
                 background: rgba(71, 85, 105, 0.4);
@@ -1997,7 +1993,7 @@ class SmartNotesApp(QMainWindow):
             QTextEdit:focus {
                 border: 1px solid rgba(59, 130, 246, 0.5);
                 background: rgba(15, 23, 42, 0.9);
-                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+                /* box-shadow removed for compatibility */
             }
             QScrollBar:vertical {
                 background: rgba(15, 23, 42, 0.4);
@@ -2117,12 +2113,10 @@ class SmartNotesApp(QMainWindow):
                     stop:0 rgba(34, 197, 94, 0.4), stop:1 rgba(59, 130, 246, 0.3));
                 color: #4ade80;
                 border: 1px solid rgba(34, 197, 94, 0.5);
-                transform: translateY(-1px);
-                box-shadow: 0 2px 8px rgba(34, 197, 94, 0.3);
             }
             QPushButton:pressed:enabled {
-                transform: translateY(0px);
-                box-shadow: 0 1px 4px rgba(34, 197, 94, 0.2);
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(34, 197, 94, 0.5), stop:1 rgba(59, 130, 246, 0.4));
             }
             QPushButton:disabled {
                 background: rgba(71, 85, 105, 0.2);
