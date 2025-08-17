@@ -1548,10 +1548,11 @@ class SmartNotesApp(QMainWindow):
             }
         """)
         primary_layout.addWidget(self.new_note_btn)
-        
-        self.delete_note_btn = QPushButton("Delete")
+
+        self.delete_note_btn = QPushButton("🗑 Delete")
         self.delete_note_btn.clicked.connect(self.delete_note)
-        self.delete_note_btn.setFixedSize(60, 40)
+        self.delete_note_btn.setMinimumWidth(90)
+        self.delete_note_btn.setFixedHeight(40)
         try:
             self.delete_note_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
             self.delete_note_btn.setIconSize(QSize(16, 16))
@@ -1559,9 +1560,9 @@ class SmartNotesApp(QMainWindow):
             pass
         self.delete_note_btn.setStyleSheet("""
             QPushButton {
-                background: rgba(239, 68, 68, 0.2);
-                color: #ef4444;
-                border: 1px solid rgba(239, 68, 68, 0.3);
+                background: rgba(239, 68, 68, 0.25);
+                color: #fecaca;
+                border: 1px solid rgba(239, 68, 68, 0.5);
                 padding: 8px 12px;
                 border-radius: 8px;
                 font-weight: 600;
@@ -1570,56 +1571,47 @@ class SmartNotesApp(QMainWindow):
                 min-height: 20px;
             }
             QPushButton:hover {
-                background: rgba(239, 68, 68, 0.3);
-                color: #f87171;
-                border: 1px solid rgba(239, 68, 68, 0.4);
+                background: rgba(239, 68, 68, 0.35);
+                color: #fff;
+                border: 1px solid rgba(239, 68, 68, 0.6);
             }
             QPushButton:pressed {
-                background: rgba(239, 68, 68, 0.4);
+                background: rgba(239, 68, 68, 0.45);
             }
         """)
         primary_layout.addWidget(self.delete_note_btn)
         
         button_layout.addLayout(primary_layout)
         
-        # Secondary actions
+        # Secondary actions (remove Import/Export for now)
         secondary_layout = QHBoxLayout()
         secondary_layout.setSpacing(6)
-        
-        self.import_btn = QPushButton("Import")
-        self.export_btn = QPushButton("Export")
+
         self.settings_btn = QPushButton("Settings")
-        # Add standard icons where available
         try:
-            self.import_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogOpenButton))
-            self.export_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
             self.settings_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
-            for b in [self.import_btn, self.export_btn, self.settings_btn]:
-                b.setIconSize(QSize(14, 14))
+            self.settings_btn.setIconSize(QSize(14, 14))
         except Exception:
             pass
-        
-        for btn in [self.import_btn, self.export_btn, self.settings_btn]:
-            btn.setStyleSheet("""
-                QPushButton {
-                    background: rgba(71, 85, 105, 0.3);
-                    color: #94a3b8;
-                    border: 1px solid rgba(71, 85, 105, 0.4);
-                    padding: 6px 10px;
-                    border-radius: 6px;
-                    font-weight: 500;
-                    font-size: 10px;
-                    font-family: 'Segoe UI', system-ui, sans-serif;
-                    min-height: 16px;
-                }
-                QPushButton:hover {
-                    background: rgba(71, 85, 105, 0.4);
-                    color: #cbd5e1;
-                    border: 1px solid rgba(71, 85, 105, 0.5);
-                }
-            """)
-            secondary_layout.addWidget(btn)
-        
+        self.settings_btn.setStyleSheet("""
+            QPushButton {
+                background: rgba(71, 85, 105, 0.3);
+                color: #94a3b8;
+                border: 1px solid rgba(71, 85, 105, 0.4);
+                padding: 6px 10px;
+                border-radius: 6px;
+                font-weight: 500;
+                font-size: 10px;
+                font-family: 'Segoe UI', system-ui, sans-serif;
+                min-height: 16px;
+            }
+            QPushButton:hover {
+                background: rgba(71, 85, 105, 0.4);
+                color: #cbd5e1;
+                border: 1px solid rgba(71, 85, 105, 0.5);
+            }
+        """)
+        secondary_layout.addWidget(self.settings_btn)
         self.settings_btn.clicked.connect(self.show_settings)
         button_layout.addLayout(secondary_layout)
         
@@ -1681,41 +1673,44 @@ class SmartNotesApp(QMainWindow):
     def create_right_panel(self):
         """Create enhanced right panel with modern editor"""
         panel = QWidget()
-        panel.setStyleSheet("""
+        panel.setStyleSheet(
+            """
             QWidget {
                 background: rgba(15, 23, 42, 0.7);
                 border: 1px solid rgba(51, 65, 85, 0.3);
                 border-radius: 12px;
             }
-        """)
-        
+            """
+        )
+
         layout = QVBoxLayout(panel)
         layout.setSpacing(16)
         layout.setContentsMargins(16, 16, 16, 16)
 
-        # Enhanced header with note metadata
+        # Header with metadata
         header_container = QWidget()
-        header_container.setStyleSheet("""
+        header_container.setStyleSheet(
+            """
             QWidget {
                 background: rgba(30, 41, 59, 0.8);
                 border: 1px solid rgba(51, 65, 85, 0.3);
                 border-radius: 12px;
                 padding: 16px;
             }
-        """)
-        
+            """
+        )
+
         header_layout = QVBoxLayout(header_container)
         header_layout.setSpacing(12)
-        
-        # Title input with enhanced styling
+
         title_layout = QHBoxLayout()
-        title_icon = QLabel()
-        title_layout.addWidget(title_icon)
+        title_layout.addWidget(QLabel())
 
         self.title_input = QLineEdit()
         self.title_input.setPlaceholderText("Enter an amazing title...")
         self.title_input.textChanged.connect(self.on_content_changed)
-        self.title_input.setStyleSheet("""
+        self.title_input.setStyleSheet(
+            """
             QLineEdit {
                 padding: 14px 18px;
                 border: 1px solid rgba(51, 65, 85, 0.3);
@@ -1731,27 +1726,20 @@ class SmartNotesApp(QMainWindow):
                 background: rgba(15, 23, 42, 0.9);
                 color: #f8fafc;
             }
-            QLineEdit::placeholder {
-                color: #64748b;
-                font-weight: 400;
-            }
-        """)
+            QLineEdit::placeholder { color: #64748b; font-weight: 400; }
+            """
+        )
         title_layout.addWidget(self.title_input)
         header_layout.addLayout(title_layout)
 
-        # Tags and metadata row
         meta_layout = QHBoxLayout()
-        
-        # Tags input
         tags_container = QHBoxLayout()
-        tags_icon = QLabel("🏷️")
-        tags_icon.setStyleSheet("font-size: 16px; color: #a78bfa;")
-        tags_container.addWidget(tags_icon)
-        
+        tags_container.addWidget(QLabel("🏷️"))
         self.tags_input = QLineEdit()
         self.tags_input.setPlaceholderText("Add tags: productivity, ideas, work...")
         self.tags_input.textChanged.connect(self.on_content_changed)
-        self.tags_input.setStyleSheet("""
+        self.tags_input.setStyleSheet(
+            """
             QLineEdit {
                 padding: 10px 16px;
                 border: 1px solid rgba(51, 65, 85, 0.3);
@@ -1759,101 +1747,69 @@ class SmartNotesApp(QMainWindow):
                 font-size: 13px;
                 color: #e2e8f0;
                 background: rgba(15, 23, 42, 0.6);
-                font-family: 'Segoe UI', system-ui, sans-serif;
-                font-weight: 400;
             }
             QLineEdit:focus {
                 border: 1px solid rgba(139, 92, 246, 0.5);
                 background: rgba(15, 23, 42, 0.8);
                 color: #f1f5f9;
             }
-            QLineEdit::placeholder {
-                color: #64748b;
-            }
-        """)
+            """
+        )
         tags_container.addWidget(self.tags_input)
         meta_layout.addLayout(tags_container)
-        
-        # Lock button
+
         self.lock_btn = QPushButton("Unlock")
         self.lock_btn.setFixedSize(40, 40)
         self.lock_btn.setCheckable(True)
         self.lock_btn.clicked.connect(self.toggle_lock_current)
-        self.lock_btn.setStyleSheet("""
-            QPushButton {
-                background: rgba(71, 85, 105, 0.3);
-                color: #94a3b8;
-                border: 1px solid rgba(71, 85, 105, 0.4);
-                border-radius: 8px;
-                font-size: 16px;
-            }
-            QPushButton:checked {
-                background: rgba(239, 68, 68, 0.3);
-                color: #ef4444;
-                border: 1px solid rgba(239, 68, 68, 0.4);
-            }
-            QPushButton:hover {
-                background: rgba(59, 130, 246, 0.3);
-                /* transform removed for compatibility */
-            }
-        """)
+        self.lock_btn.setStyleSheet(
+            """
+            QPushButton { background: rgba(71,85,105,.3); color: #94a3b8; border: 1px solid rgba(71,85,105,.4); border-radius: 8px; font-size: 16px; }
+            QPushButton:checked { background: rgba(239,68,68,.3); color:#ef4444; border:1px solid rgba(239,68,68,.4); }
+            QPushButton:hover { background: rgba(59,130,246,.3); }
+            """
+        )
         meta_layout.addWidget(self.lock_btn)
-        
         header_layout.addLayout(meta_layout)
         layout.addWidget(header_container)
 
-        # Enhanced formatting toolbar
+        # Toolbar
         toolbar_container = QWidget()
-        toolbar_container.setStyleSheet("""
-            QWidget {
-                background: rgba(30, 41, 59, 0.8);
-                border: 1px solid rgba(51, 65, 85, 0.3);
-                border-radius: 10px;
-                padding: 8px 12px;
-            }
-        """)
-        
+        toolbar_container.setStyleSheet(
+            """
+            QWidget { background: rgba(30,41,59,.8); border: 1px solid rgba(51,65,85,.3); border-radius: 10px; padding: 8px 12px; }
+            """
+        )
         toolbar_layout = QHBoxLayout(toolbar_container)
         toolbar_layout.setSpacing(6)
-        
-        # Format mode selector
+
         format_group = QHBoxLayout()
-        format_label = QLabel("Format:")
-        format_label.setStyleSheet("color: #94a3b8; font-weight: 500; font-size: 12px;")
-        format_group.addWidget(format_label)
-        
+        fmt_label = QLabel("Format:")
+        fmt_label.setStyleSheet("color:#94a3b8;font-weight:500;font-size:12px;")
+        format_group.addWidget(fmt_label)
+
         self.format_combo = QComboBox()
         self.format_combo.addItems(["HTML", "Markdown"])
         self.format_combo.currentTextChanged.connect(self.on_format_changed)
-        self.format_combo.setStyleSheet("""
-            QComboBox {
-                background: rgba(15, 23, 42, 0.8);
-                border: 1px solid rgba(51, 65, 85, 0.3);
-                border-radius: 6px;
-                padding: 4px 8px;
-                color: #e2e8f0;
-                font-weight: 500;
-                min-width: 80px;
-            }
-            QComboBox:focus {
-                border: 1px solid rgba(59, 130, 246, 0.5);
-            }
-            QComboBox::drop-down {
-                border: none;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border-left: 4px solid transparent;
-                border-right: 4px solid transparent;
-                border-top: 4px solid #94a3b8;
-                margin-right: 6px;
-            }
-        """)
+        self.format_combo.setStyleSheet(
+            """
+            QComboBox { background: rgba(15,23,42,.8); border: 1px solid rgba(51,65,85,.3); border-radius: 6px; padding: 4px 8px; color: #e2e8f0; font-weight: 500; min-width: 80px; }
+            QComboBox:focus { border: 1px solid rgba(59,130,246,.5); }
+            QComboBox::drop-down { border: none; }
+            QComboBox::down-arrow { image: none; border-left:4px solid transparent; border-right:4px solid transparent; border-top:4px solid #94a3b8; margin-right:6px; }
+            """
+        )
+        # Set default selection from settings
+        try:
+            default_fmt = (app_config.get('default_content_format', 'html') if app_config else 'html').lower()
+            self.format_combo.setCurrentText('Markdown' if default_fmt == 'markdown' else 'HTML')
+        except Exception:
+            pass
+
         format_group.addWidget(self.format_combo)
         format_group.addWidget(QLabel("|"))
         toolbar_layout.addLayout(format_group)
 
-        # Text formatting buttons with better icons
         formatting_buttons = [
             ("B", "Bold", self.toggle_bold),
             ("I", "Italic", self.toggle_italic),
@@ -1867,280 +1823,146 @@ class SmartNotesApp(QMainWindow):
             ("📷", "Insert Image", self.insert_image),
             ("</>", "Insert Code", self.insert_code_block),
         ]
-        
+
         self.format_buttons = {}
-        
         for text, tooltip, action in formatting_buttons:
             if text == "":
-                separator = QLabel("•")
-                separator.setStyleSheet("color: #475569; font-size: 14px; margin: 0 4px;")
-                toolbar_layout.addWidget(separator)
+                sep = QLabel("•")
+                sep.setStyleSheet("color:#475569;font-size:14px;margin:0 4px;")
+                toolbar_layout.addWidget(sep)
                 continue
-                
             btn = QPushButton(text)
             btn.setFixedSize(32, 32)
             btn.setToolTip(tooltip)
-            
             if text in ["B", "I", "U"]:
                 btn.setCheckable(True)
                 self.format_buttons[text] = btn
-            
             if action:
                 btn.clicked.connect(action)
-                
-            btn.setStyleSheet("""
-                QPushButton {
-                    background: rgba(71, 85, 105, 0.3);
-                    color: #94a3b8;
-                    border: 1px solid rgba(71, 85, 105, 0.4);
-                    border-radius: 6px;
-                    font-weight: 600;
-                    font-size: 11px;
-                    font-family: 'Segoe UI', system-ui, sans-serif;
-                    min-width: 28px;
-                    min-height: 28px;
-                }
-                QPushButton:checked {
-                    background: rgba(59, 130, 246, 0.3);
-                    color: #3b82f6;
-                    border: 1px solid rgba(59, 130, 246, 0.4);
-                }
-                QPushButton:hover {
-                    background: rgba(71, 85, 105, 0.4);
-                    color: #cbd5e1;
-                }
-            """)
+            btn.setStyleSheet(
+                """
+                QPushButton { background: rgba(71,85,105,.3); color:#94a3b8; border:1px solid rgba(71,85,105,.4); border-radius:6px; font-weight:600; font-size:11px; min-width:28px; min-height:28px; }
+                QPushButton:checked { background: rgba(59,130,246,.3); color:#3b82f6; border:1px solid rgba(59,130,246,.4); }
+                QPushButton:hover { background: rgba(71,85,105,.4); color:#cbd5e1; }
+                """
+            )
             toolbar_layout.addWidget(btn)
 
         toolbar_layout.addStretch()
-        
-        # Font size controls
+
         size_controls = QHBoxLayout()
-        size_controls.addWidget(QLabel("Size:"))
-        
+        size_label = QLabel("Size:")
+        size_label.setStyleSheet("color:#94a3b8;font-weight:500;font-size:12px;")
+        size_controls.addWidget(size_label)
         size_down_btn = QPushButton("−")
+        size_down_btn.setToolTip("Decrease font size")
         size_down_btn.setFixedSize(28, 28)
-        size_down_btn.clicked.connect(self.decrease_font_size)
-        
+        size_down_btn.clicked.connect(lambda: self.content_editor.zoomOut(1))
         size_up_btn = QPushButton("+")
+        size_up_btn.setToolTip("Increase font size")
         size_up_btn.setFixedSize(28, 28)
-        size_up_btn.clicked.connect(self.increase_font_size)
-        
-        for btn in [size_down_btn, size_up_btn]:
-            btn.setStyleSheet("""
-                QPushButton {
-                    background: rgba(71, 85, 105, 0.3);
-                    color: #94a3b8;
-                    border: 1px solid rgba(71, 85, 105, 0.4);
-                    border-radius: 6px;
-                    font-weight: bold;
-                    font-size: 12px;
-                }
-                QPushButton:hover {
-                    background: rgba(71, 85, 105, 0.4);
-                    color: #cbd5e1;
-                }
-            """)
-        
+        size_up_btn.clicked.connect(lambda: self.content_editor.zoomIn(1))
+        for b in [size_down_btn, size_up_btn]:
+            b.setStyleSheet(
+                """
+                QPushButton { background: rgba(71,85,105,.3); color:#94a3b8; border:1px solid rgba(71,85,105,.4); border-radius:6px; font-weight:bold; font-size:12px; }
+                QPushButton:hover { background: rgba(71,85,105,.4); color:#cbd5e1; }
+                """
+            )
         size_controls.addWidget(size_down_btn)
         size_controls.addWidget(size_up_btn)
         toolbar_layout.addLayout(size_controls)
-        
         layout.addWidget(toolbar_container)
 
-        # Enhanced editor tabs with better preview
+        # Tabs and editors
         self.editor_tabs = QTabWidget()
-        self.editor_tabs.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid rgba(51, 65, 85, 0.3);
-                border-radius: 12px;
-                background: rgba(30, 41, 59, 0.6);
-                padding: 0px;
-            }
-            QTabBar::tab {
-                background: rgba(71, 85, 105, 0.3);
-                color: #94a3b8;
-                padding: 12px 24px;
-                margin: 2px;
-                border-radius: 8px;
-                font-weight: 600;
-                font-size: 13px;
-                border: 1px solid rgba(71, 85, 105, 0.4);
-                min-width: 80px;
-            }
-            QTabBar::tab:selected {
-                background: rgba(59, 130, 246, 0.3);
-                color: #93c5fd;
-                border: 1px solid rgba(59, 130, 246, 0.4);
-                /* box-shadow removed for compatibility */
-            }
-            QTabBar::tab:hover:!selected {
-                background: rgba(71, 85, 105, 0.4);
-                color: #cbd5e1;
-            }
-        """)
-        
-        # Edit tab
+        self.editor_tabs.setStyleSheet(
+            """
+            QTabWidget::pane { border: 1px solid rgba(51,65,85,.3); border-radius: 12px; background: rgba(30,41,59,.6); padding: 0px; }
+            QTabBar::tab { background: rgba(71,85,105,.3); color:#94a3b8; padding: 12px 24px; margin: 2px; border-radius: 8px; font-weight: 600; font-size: 13px; border: 1px solid rgba(71,85,105,.4); min-width: 80px; }
+            QTabBar::tab:selected { background: rgba(59,130,246,.3); color:#93c5fd; border: 1px solid rgba(59,130,246,.4); }
+            QTabBar::tab:hover:!selected { background: rgba(71,85,105,.4); color:#cbd5e1; }
+            """
+        )
+
         edit_tab = QWidget()
         edit_layout = QVBoxLayout(edit_tab)
         edit_layout.setContentsMargins(16, 16, 16, 16)
-        
         self.content_editor = QTextEdit()
         self.content_editor.textChanged.connect(self.on_content_changed)
         self.content_editor.cursorPositionChanged.connect(self.update_format_buttons)
         self.content_editor.setFont(QFont("Segoe UI", 14))
-        self.content_editor.setStyleSheet("""
-            QTextEdit {
-                border: 1px solid rgba(51, 65, 85, 0.3);
-                border-radius: 12px;
-                padding: 24px;
-                background: rgba(15, 23, 42, 0.8);
-                color: #f1f5f9;
-                line-height: 1.6;
-                font-family: 'Segoe UI', 'San Francisco', system-ui, sans-serif;
-                font-weight: 400;
-                font-size: 14px;
-                selection-background-color: rgba(59, 130, 246, 0.3);
-                selection-color: #bfdbfe;
-            }
-            QTextEdit:focus {
-                border: 1px solid rgba(59, 130, 246, 0.5);
-                background: rgba(15, 23, 42, 0.9);
-                /* box-shadow removed for compatibility */
-            }
-            QScrollBar:vertical {
-                background: rgba(15, 23, 42, 0.4);
-                width: 12px;
-                border-radius: 6px;
-                margin: 0px;
-            }
-            QScrollBar::handle:vertical {
-                background: rgba(71, 85, 105, 0.6);
-                border-radius: 6px;
-                min-height: 20px;
-                margin: 2px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: rgba(59, 130, 246, 0.6);
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-        """)
+        self.content_editor.setStyleSheet(
+            """
+            QTextEdit { border: 1px solid rgba(51,65,85,.3); border-radius: 12px; padding: 24px; background: rgba(15,23,42,.8); color:#f1f5f9; line-height: 1.6; font-family: 'Segoe UI', system-ui, sans-serif; font-weight: 400; font-size: 14px; selection-background-color: rgba(59,130,246,.3); selection-color: #bfdbfe; }
+            QTextEdit:focus { border: 1px solid rgba(59,130,246,.5); background: rgba(15,23,42,.9); }
+            QScrollBar:vertical { background: rgba(15,23,42,.4); width: 12px; border-radius: 6px; margin: 0px; }
+            QScrollBar::handle:vertical { background: rgba(71,85,105,.6); border-radius: 6px; min-height: 20px; margin: 2px; }
+            QScrollBar::handle:vertical:hover { background: rgba(59,130,246,.6); }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+            """
+        )
         edit_layout.addWidget(self.content_editor)
         self.editor_tabs.addTab(edit_tab, "✏️ Edit")
 
-        # Enhanced preview tab
         preview_tab = QWidget()
         preview_layout = QVBoxLayout(preview_tab)
         preview_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Use web view for better markdown rendering if available
         try:
             self.preview_view = QWebEngineView()
-            self.preview_view.setStyleSheet("""
-                QWebEngineView {
-                    border: 1px solid rgba(51, 65, 85, 0.3);
-                    border-radius: 12px;
-                    background: rgba(15, 23, 42, 0.8);
-                }
-            """)
-        except:
-            # Fallback to QTextEdit
+            self.preview_view.setStyleSheet(
+                """
+                QWebEngineView { border: 1px solid rgba(51,65,85,.3); border-radius: 12px; background: rgba(15,23,42,.8); }
+                """
+            )
+        except Exception:
             self.preview_view = QTextEdit()
             self.preview_view.setReadOnly(True)
-            self.preview_view.setStyleSheet("""
-                QTextEdit {
-                    border: 1px solid rgba(51, 65, 85, 0.3);
-                    border-radius: 12px;
-                    padding: 24px;
-                    background: rgba(15, 23, 42, 0.8);
-                    color: #f1f5f9;
-                    font-family: 'Segoe UI', system-ui, sans-serif;
-                    font-size: 14px;
-                    line-height: 1.6;
-                }
-            """)
-        
+            self.preview_view.setStyleSheet(
+                """
+                QTextEdit { border: 1px solid rgba(51,65,85,.3); border-radius: 12px; padding: 24px; background: rgba(15,23,42,.8); color:#f1f5f9; font-family: 'Segoe UI', system-ui, sans-serif; font-size: 14px; line-height: 1.6; }
+                """
+            )
         preview_layout.addWidget(self.preview_view)
         self.editor_tabs.addTab(preview_tab, "👁️ Preview")
 
         self.editor_tabs.currentChanged.connect(self.on_tab_changed)
         layout.addWidget(self.editor_tabs)
 
-        # Enhanced action buttons
         actions_container = QWidget()
-        actions_container.setStyleSheet("""
-            QWidget {
-                background: rgba(30, 41, 59, 0.8);
-                border: 1px solid rgba(51, 65, 85, 0.3);
-                border-radius: 10px;
-                padding: 12px 16px;
-            }
-        """)
-        
+        actions_container.setStyleSheet(
+            """
+            QWidget { background: rgba(30,41,59,.8); border: 1px solid rgba(51,65,85,.3); border-radius: 10px; padding: 12px 16px; }
+            """
+        )
         actions_layout = QHBoxLayout(actions_container)
         actions_layout.setSpacing(12)
-        
-        # Word count display
         self.word_count_label = QLabel("0 words")
-        self.word_count_label.setStyleSheet("""
-            QLabel {
-                color: #64748b;
-                font-weight: 500;
-                font-size: 12px;
-                background: rgba(15, 23, 42, 0.6);
-                padding: 6px 12px;
-                border: 1px solid rgba(51, 65, 85, 0.3);
-                border-radius: 6px;
-            }
-        """)
+        self.word_count_label.setStyleSheet(
+            """
+            QLabel { color:#64748b; font-weight:500; font-size:12px; background: rgba(15,23,42,.6); padding: 6px 12px; border:1px solid rgba(51,65,85,.3); border-radius: 6px; }
+            """
+        )
         actions_layout.addWidget(self.word_count_label)
-        
         actions_layout.addStretch()
-        
-        # Action buttons
         self.save_btn = QPushButton("Save Note")
         self.save_btn.clicked.connect(self.save_note)
         self.save_btn.setEnabled(False)
         try:
             self.save_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogSaveButton))
-            self.save_btn.setIconSize(QSize(20,20))
+            self.save_btn.setIconSize(QSize(20, 20))
         except Exception:
             pass
-        self.save_btn.setStyleSheet("""
-            QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 rgba(34, 197, 94, 0.3), stop:1 rgba(59, 130, 246, 0.2));
-                color: #22c55e;
-                border: 1px solid rgba(34, 197, 94, 0.4);
-                padding: 10px 20px;
-                border-radius: 8px;
-                font-weight: 600;
-                font-size: 12px;
-                font-family: 'Segoe UI', system-ui, sans-serif;
-                min-height: 20px;
-            }
-            QPushButton:hover:enabled {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 rgba(34, 197, 94, 0.4), stop:1 rgba(59, 130, 246, 0.3));
-                color: #4ade80;
-                border: 1px solid rgba(34, 197, 94, 0.5);
-            }
-            QPushButton:pressed:enabled {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
-                    stop:0 rgba(34, 197, 94, 0.5), stop:1 rgba(59, 130, 246, 0.4));
-            }
-            QPushButton:disabled {
-                background: rgba(71, 85, 105, 0.2);
-                color: #64748b;
-                border: 1px solid rgba(71, 85, 105, 0.3);
-            }
-        """)
+        self.save_btn.setStyleSheet(
+            """
+            QPushButton { background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 rgba(34,197,94,.3), stop:1 rgba(59,130,246,.2)); color:#22c55e; border:1px solid rgba(34,197,94,.4); padding:10px 20px; border-radius:8px; font-weight:600; font-size:12px; min-height:20px; }
+            QPushButton:hover:enabled { background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 rgba(34,197,94,.4), stop:1 rgba(59,130,246,.3)); color:#4ade80; border:1px solid rgba(34,197,94,.5); }
+            QPushButton:pressed:enabled { background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 rgba(34,197,94,.5), stop:1 rgba(59,130,246,.4)); }
+            QPushButton:disabled { background: rgba(71,85,105,.2); color:#64748b; border:1px solid rgba(71,85,105,.3); }
+            """
+        )
         actions_layout.addWidget(self.save_btn)
-        
         layout.addWidget(actions_container)
-        
         return panel
 
     # Additional UI Methods
