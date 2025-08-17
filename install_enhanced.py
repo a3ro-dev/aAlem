@@ -237,7 +237,7 @@ def main():
         print("\nTo start Alem:")
         print(f"   python {Path(__file__).parent / 'Alem.py'}")
         print("\nOr use the launcher:")
-        print(f"   python {Path(__file__).parent / 'launch_alem.py'}")
+        print(f"   python {Path(__file__).parent / 'launch_enhanced.py'}")
         print("\nEnjoy your enhanced note-taking experience! 🌟")
         print("="*60)
         

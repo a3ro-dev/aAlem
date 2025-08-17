@@ -278,7 +278,7 @@ python launch_enhanced.py --debug
 - **Slow Startup**: Remove large note databases
 
 ### Getting Help
-- 📧 **Email**: [Support](mailto:support@alem.dev)
+- 📧 **Email**: [Support](mailto:akshatsingh14372@outlook.com)
 - 🐛 **Issues**: [GitHub Issues](https://github.com/a3ro-dev/aAlem/issues)
 - 💬 **Discussions**: [GitHub Discussions](https://github.com/a3ro-dev/aAlem/discussions)
 

@@ -2850,7 +2850,7 @@ Optimized for productivity and performance
                             max-width: 100%;
                             height: auto;
                             border-radius: 8px;
-                            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+                            /* box-shadow removed for compatibility */
                         }}
                         .codehilite {{
                             background: rgba(30, 41, 59, 0.8);
