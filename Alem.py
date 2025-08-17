@@ -988,7 +988,8 @@ class SmartNotesApp(QMainWindow):
     def setup_ui(self):
         """Setup the UI with native window frame and status bar."""
         # Theme
-        self.setStyleSheet("""
+        self.setStyleSheet(
+            """
             QMainWindow {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                     stop:0 rgba(10, 15, 28, 0.95),
@@ -998,7 +999,8 @@ class SmartNotesApp(QMainWindow):
                 color: #e2e8f0;
             }
             QWidget { color: #e2e8f0; }
-        """)
+            """
+        )
 
         # Central widget
         central_widget = QWidget()
@@ -1014,20 +1016,31 @@ class SmartNotesApp(QMainWindow):
         content_layout = QHBoxLayout()
         content_layout.setContentsMargins(8, 8, 8, 8)
 
+        # Use a splitter so the app resizes responsively
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter = splitter
         content_layout.addWidget(splitter)
 
-        # Left panel
-        splitter.addWidget(self.create_left_panel())
-        # Right panel
-        splitter.addWidget(self.create_right_panel())
-        splitter.setSizes([400, 1000])
+        # Left and Right panels
+        self.left_panel = self.create_left_panel()
+        splitter.addWidget(self.left_panel)
+        self.right_panel = self.create_right_panel()
+        splitter.addWidget(self.right_panel)
+
+        # Make the sidebar narrower by default and collapsible for responsiveness
+        splitter.setCollapsible(0, True)
+        splitter.setCollapsible(1, False)
+        splitter.setSizes([240, 1160])
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
 
+        # Remember last sidebar size for toggle
+        self._last_sidebar_size = 240
+
         main_layout.addLayout(content_layout)
 
-        # Status bar
+        # Menubar and Status bar
+        self.create_menu_bar()
         self.status_bar = self.create_status_bar()
         self.setStatusBar(self.status_bar)
 
