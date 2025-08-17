@@ -203,3 +203,4 @@ __marimo__/
 .streamlit/secrets.toml
 smartnotes.db
 smartnotes.db
+.GEMINI.md
