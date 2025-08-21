@@ -157,13 +157,13 @@ def create_right_panel(main_window):
     toolbar_layout.addLayout(format_group)
 
     formatting_buttons = [
-        ("B", "Bold", main_window.toggle_bold, QStyle.StandardPixmap.SP_DialogApplyButton),
+        ("B", "Bold", main_window.toggle_bold, None),
         ("I", "Italic", main_window.toggle_italic, None),
         ("U", "Underline", main_window.toggle_underline, None),
         ("", "sep", None, None),
-        ("◀", "Align Left", lambda: main_window.set_alignment(Qt.AlignmentFlag.AlignLeft), None),
-        ("▬", "Center", lambda: main_window.set_alignment(Qt.AlignmentFlag.AlignCenter), None), 
-        ("▶", "Align Right", lambda: main_window.set_alignment(Qt.AlignmentFlag.AlignRight), None),
+        ("◄", "Align Left", lambda: main_window.set_alignment(Qt.AlignmentFlag.AlignLeft), None),
+        ("■", "Center", lambda: main_window.set_alignment(Qt.AlignmentFlag.AlignCenter), None), 
+        ("►", "Align Right", lambda: main_window.set_alignment(Qt.AlignmentFlag.AlignRight), None),
         ("", "sep", None, None),
         ("Link", "Insert Link", main_window.insert_link, None),
         ("Img", "Insert Image", main_window.insert_image, None),
@@ -178,30 +178,10 @@ def create_right_panel(main_window):
             toolbar_layout.addWidget(sep)
             continue
         btn = QPushButton(text)
-        btn.setFixedSize(32, 32)
+        btn.setFixedSize(40, 32)
         btn.setToolTip(tooltip)
         
-        # Set proper icons for buttons
-        try:
-            if text == "B":
-                btn.setIcon(main_window.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
-            elif text == "I":
-                btn.setIcon(main_window.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton))
-            elif text == "U":
-                btn.setIcon(main_window.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton))
-            elif text == "◀":
-                btn.setIcon(main_window.style().standardIcon(QStyle.StandardPixmap.SP_ArrowLeft))
-            elif text == "▶":
-                btn.setIcon(main_window.style().standardIcon(QStyle.StandardPixmap.SP_ArrowRight))
-            elif text == "▬":
-                btn.setIcon(main_window.style().standardIcon(QStyle.StandardPixmap.SP_DialogResetButton))
-            
-            if btn.icon():
-                btn.setIconSize(QSize(16, 16))
-                btn.setText("")  # Remove text if icon is set
-        except Exception:
-            pass  # Fallback to text if icons fail
-        
+        # Keep text labels - they're clearer than confusing icons
         if text in ["B", "I", "U"]:
             btn.setCheckable(True)
             main_window.format_buttons[text] = btn
@@ -209,9 +189,30 @@ def create_right_panel(main_window):
             btn.clicked.connect(action)
         btn.setStyleSheet(
             """
-            QPushButton { background: rgba(71,85,105,.3); color:#94a3b8; border:1px solid rgba(71,85,105,.4); border-radius:6px; font-weight:600; font-size:11px; min-width:28px; min-height:28px; }
-            QPushButton:checked { background: rgba(59,130,246,.3); color:#3b82f6; border:1px solid rgba(59,130,246,.4); }
-            QPushButton:hover { background: rgba(71,85,105,.4); color:#cbd5e1; }
+            QPushButton { 
+                background: rgba(71,85,105,.3); 
+                color: #e2e8f0; 
+                border: 1px solid rgba(71,85,105,.4); 
+                border-radius: 6px; 
+                font-weight: 600; 
+                font-size: 11px; 
+                font-family: 'Segoe UI', system-ui, sans-serif;
+                min-width: 36px; 
+                min-height: 28px; 
+            }
+            QPushButton:checked { 
+                background: rgba(59,130,246,.4); 
+                color: #ffffff; 
+                border: 1px solid rgba(59,130,246,.6); 
+            }
+            QPushButton:hover { 
+                background: rgba(71,85,105,.5); 
+                color: #f1f5f9; 
+                border: 1px solid rgba(71,85,105,.6);
+            }
+            QPushButton:pressed {
+                background: rgba(59,130,246,.3);
+            }
             """
         )
         toolbar_layout.addWidget(btn)
@@ -222,19 +223,30 @@ def create_right_panel(main_window):
     size_label = QLabel("Size:")
     size_label.setStyleSheet("color:#94a3b8;font-weight:500;font-size:12px;")
     size_controls.addWidget(size_label)
-    size_down_btn = QPushButton("−")
+    size_down_btn = QPushButton("A-")
     size_down_btn.setToolTip("Decrease font size")
-    size_down_btn.setFixedSize(28, 28)
+    size_down_btn.setFixedSize(32, 28)
     size_down_btn.clicked.connect(lambda: main_window.content_editor.zoomOut(1))
-    size_up_btn = QPushButton("+")
+    size_up_btn = QPushButton("A+")
     size_up_btn.setToolTip("Increase font size")
-    size_up_btn.setFixedSize(28, 28)
+    size_up_btn.setFixedSize(32, 28)
     size_up_btn.clicked.connect(lambda: main_window.content_editor.zoomIn(1))
     for b in [size_down_btn, size_up_btn]:
         b.setStyleSheet(
             """
-            QPushButton { background: rgba(71,85,105,.3); color:#94a3b8; border:1px solid rgba(71,85,105,.4); border-radius:6px; font-weight:bold; font-size:12px; }
-            QPushButton:hover { background: rgba(71,85,105,.4); color:#cbd5e1; }
+            QPushButton { 
+                background: rgba(71,85,105,.3); 
+                color: #e2e8f0; 
+                border: 1px solid rgba(71,85,105,.4); 
+                border-radius: 6px; 
+                font-weight: 600; 
+                font-size: 10px; 
+                font-family: 'Segoe UI', system-ui, sans-serif;
+            }
+            QPushButton:hover { 
+                background: rgba(71,85,105,.4); 
+                color: #f1f5f9; 
+            }
             """
         )
     size_controls.addWidget(size_down_btn)
