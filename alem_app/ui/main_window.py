@@ -6,7 +6,7 @@ from typing import Optional
 
 from PyQt6.QtCore import Qt, QTimer, QSize
 from PyQt6.QtGui import QIcon, QFont, QKeySequence, QTextCharFormat, QAction
-from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel, QStatusBar, QProgressBar, QMessageBox, QListWidgetItem, QDialog, QLineEdit, QListWidget, QDialogButtonBox, QFormLayout, QApplication, QInputDialog
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel, QStatusBar, QProgressBar, QMessageBox, QListWidgetItem, QDialog, QLineEdit, QListWidget, QDialogButtonBox, QFormLayout, QApplication, QInputDialog, QFrame
 
 from alem_app.core.cache import RedisCacheManager
 from alem_app.core.discord_rpc import DiscordRPCManager
@@ -67,6 +67,9 @@ class SmartNotesApp(QMainWindow):
         setup_shortcuts(self)
         self.load_note_headers()
         self.update_stats()
+        
+        # Initial preview render
+        QTimer.singleShot(100, self.render_preview)  # Delay to ensure UI is fully loaded
 
         # Timers
         self.auto_save_timer = QTimer()
@@ -111,10 +114,19 @@ class SmartNotesApp(QMainWindow):
         self.right_panel = create_right_panel(self)
         self.splitter.addWidget(self.right_panel)
 
-        self.splitter.setCollapsible(0, True)
-        self.splitter.setCollapsible(1, False)
+        # Configure splitter for responsive behavior
+        self.splitter.setCollapsible(0, False)  # Don't allow complete collapse
+        self.splitter.setCollapsible(1, False)  # Content panel should never collapse
+        
+        # Set minimum sizes for responsive behavior
+        self.left_panel.setMinimumWidth(180)   # Minimum sidebar width
+        self.right_panel.setMinimumWidth(400)  # Minimum content width
+        
+        # Initial sizes - will be adjusted by resizeEvent
         self.splitter.setSizes([280, 1120])
-        self.splitter.setStretchFactor(0, 0)
+        
+        # Stretch factors: sidebar doesn't grow, content panel takes extra space
+        self.splitter.setStretchFactor(0, 0)  # Sidebar doesn't stretch
         self.splitter.setStretchFactor(1, 1)
         self._last_sidebar_size = 280
         
@@ -309,7 +321,12 @@ class SmartNotesApp(QMainWindow):
     def on_content_changed(self):
         if self.current_note is not None:
             self.save_btn.setEnabled(True)
-            self.preview_timer.start(250)
+            # Immediately render preview if we're on the preview tab
+            if hasattr(self, 'editor_tabs') and self.editor_tabs.currentIndex() == 1:
+                self.render_preview()
+            else:
+                # Otherwise use timer to avoid frequent updates while typing
+                self.preview_timer.start(250)
             self.update_analytics()
 
     def on_search(self, text):
@@ -339,7 +356,15 @@ class SmartNotesApp(QMainWindow):
             self.update_analytics()
 
     def render_preview(self):
-        if not self.current_note or not hasattr(self, 'preview_view'): 
+        if not hasattr(self, 'preview_view') or not self.preview_view: 
+            return
+        
+        # Ensure we have a current note
+        if not self.current_note:
+            if hasattr(self.preview_view, 'setHtml'):
+                self.preview_view.setHtml("<p style='color: #64748b; text-align: center; margin-top: 50px;'>No note selected</p>")
+            else:
+                self.preview_view.setPlainText("No note selected")
             return
 
         content_format = self.format_combo.currentText().lower()
@@ -349,6 +374,16 @@ class SmartNotesApp(QMainWindow):
         
         if content_format == 'markdown':
             content = self.content_editor.toPlainText()
+            
+            # Handle empty content
+            if not content.strip():
+                placeholder = "# Welcome to Markdown!\n\nStart typing your markdown content here...\n\n**Bold text**, *italic text*, and `code`"
+                if hasattr(self.preview_view, 'setHtml'):
+                    self.preview_view.setHtml(f"<div style='color: #64748b; text-align: center; margin-top: 50px;'><em>{placeholder}</em></div>")
+                else:
+                    self.preview_view.setPlainText(placeholder)
+                return
+            
             if md:
                 try:
                     extensions = app_config.get('markdown_extensions', []) if app_config else []
@@ -579,10 +614,12 @@ class SmartNotesApp(QMainWindow):
             if new_format != self.current_note.content_format:
                 self.current_note.content_format = new_format
                 self.save_btn.setEnabled(True)
+                self.render_preview()  # Update preview immediately when format changes
                 self.update_analytics()
 
     def on_tab_changed(self, index):
-        if index == 1: self.render_preview()
+        if index == 1:  # Preview tab
+            self.render_preview()
 
     def insert_link(self):
         text, ok = QInputDialog.getText(self, "Insert Link", "URL:")
@@ -708,17 +745,108 @@ Current Note: Format {self.current_note.content_format if self.current_note else
         """Handle window resize events for responsive design"""
         super().resizeEvent(event)
         
-        # Adjust splitter sizes based on window width
+        if not hasattr(self, 'splitter'):
+            return
+        
         window_width = self.width()
-        if window_width < 1000:
-            # For smaller windows, make sidebar smaller
-            if self.splitter.sizes()[0] > 250:
-                self.splitter.setSizes([250, window_width - 250])
+        window_height = self.height()
+        current_sizes = self.splitter.sizes()
+        
+        # Responsive breakpoints
+        if window_width < 800:
+            # Very small - minimize sidebar
+            sidebar_width = 200
+            content_width = window_width - sidebar_width - 20
+            self.splitter.setSizes([sidebar_width, content_width])
+            
+            # Hide some sidebar elements for very small screens
+            if hasattr(self, 'left_panel'):
+                try:
+                    # Find and hide analytics section on very small screens
+                    analytics_widgets = self.left_panel.findChildren(QFrame, "stats_frame")
+                    for widget in analytics_widgets:
+                        widget.setVisible(False)
+                except:
+                    pass
+                    
+            # Also hide some formatting buttons on very small screens
+            if hasattr(self, 'format_buttons'):
+                try:
+                    compact_buttons = ['Code', 'Img', 'Link']  # Hide these on small screens
+                    for btn_name, btn in self.format_buttons.items():
+                        if btn_name in compact_buttons:
+                            btn.setVisible(False)
+                except:
+                    pass
+                    
+        elif window_width < 1000:
+            # Small - compact sidebar
+            sidebar_width = 250
+            content_width = window_width - sidebar_width - 20
+            self.splitter.setSizes([sidebar_width, content_width])
+            
+            # Show analytics but hide some buttons
+            if hasattr(self, 'left_panel'):
+                try:
+                    analytics_widgets = self.left_panel.findChildren(QFrame, "stats_frame")
+                    for widget in analytics_widgets:
+                        widget.setVisible(True)
+                except:
+                    pass
+                    
+            if hasattr(self, 'format_buttons'):
+                try:
+                    # Show important buttons, hide some advanced ones
+                    hide_buttons = ['Code', 'Img']
+                    show_buttons = ['Link']
+                    for btn_name, btn in self.format_buttons.items():
+                        if btn_name in hide_buttons:
+                            btn.setVisible(False)
+                        elif btn_name in show_buttons:
+                            btn.setVisible(True)
+                except:
+                    pass
+            
         elif window_width < 1200:
-            # Medium windows
-            if self.splitter.sizes()[0] != 280:
-                self.splitter.setSizes([280, window_width - 280])
+            # Medium - normal sidebar
+            sidebar_width = 280
+            content_width = window_width - sidebar_width - 20
+            self.splitter.setSizes([sidebar_width, content_width])
+            
+            # Show all elements
+            if hasattr(self, 'left_panel'):
+                try:
+                    analytics_widgets = self.left_panel.findChildren(QFrame, "stats_frame")
+                    for widget in analytics_widgets:
+                        widget.setVisible(True)
+                except:
+                    pass
+                    
+            if hasattr(self, 'format_buttons'):
+                try:
+                    for btn_name, btn in self.format_buttons.items():
+                        btn.setVisible(True)
+                except:
+                    pass
+            
         else:
-            # Large windows can have normal sidebar
-            if self.splitter.sizes()[0] < 280:
-                self.splitter.setSizes([280, window_width - 280])
+            # Large - comfortable sidebar
+            sidebar_width = min(320, window_width * 0.25)  # Max 25% of window width
+            content_width = window_width - sidebar_width - 20
+            self.splitter.setSizes([sidebar_width, content_width])
+            
+            # Show all elements
+            if hasattr(self, 'left_panel'):
+                try:
+                    analytics_widgets = self.left_panel.findChildren(QFrame, "stats_frame")
+                    for widget in analytics_widgets:
+                        widget.setVisible(True)
+                except:
+                    pass
+                    
+            if hasattr(self, 'format_buttons'):
+                try:
+                    for btn_name, btn in self.format_buttons.items():
+                        btn.setVisible(True)
+                except:
+                    pass

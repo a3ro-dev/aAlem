@@ -343,4 +343,8 @@ def create_right_panel(main_window):
     )
     actions_layout.addWidget(main_window.save_btn)
     layout.addWidget(actions_container)
+    
+    # Set responsive size constraints
+    panel.setMinimumWidth(400)  # Minimum width for usable editing
+    
     return panel

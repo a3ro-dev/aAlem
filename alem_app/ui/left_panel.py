@@ -373,6 +373,7 @@ def create_left_panel(main_window):
 
     # Enhanced stats panel with real-time metrics
     stats_frame = QFrame()
+    stats_frame.setObjectName("stats_frame")  # Add object name for responsive control
     stats_frame.setStyleSheet("""
         QFrame {
             background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
@@ -420,6 +421,7 @@ def create_left_panel(main_window):
 
     layout.addWidget(stats_frame)
 
-    panel.setMinimumWidth(280)
-    panel.setMaximumWidth(400)
+    # Responsive size constraints
+    panel.setMinimumWidth(180)  # Reduced minimum for very small screens
+    panel.setMaximumWidth(350)  # Reduced maximum to leave more space for content
     return panel

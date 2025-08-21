@@ -20,6 +20,10 @@
 - **Dark Theme**: Professional dark mode with vibrant accents
 - **Custom Window**: Frameless design with custom title bar
 
+### 💎 **Modern and Intuitive UI**
+- **Updated Toolbar Icons**: Clear and modern icons for improved usability.
+- **Improved Styling**: Enhanced styling for better clarity and a more polished look.
+
 ### ⌨️ **Windows-Style Keyboard Shortcuts**
 - `Ctrl+N` - New Note
 - `Ctrl+S` - Save Note  
@@ -127,7 +131,7 @@ python Alem.py
 - **Format Switching**: Toggle between HTML and Markdown modes
 - **Code Blocks**: Syntax highlighting for 100+ languages
 
-### � **Advanced Search**
+### 🔍 **Advanced Search**
 - **Real-time Search**: Instant results as you type (300ms debounce)
 - **Multiple Modes**: Text search and AI semantic search
 - **Performance Metrics**: Search time tracking and optimization
@@ -212,13 +216,34 @@ redis-server
 ### Project Structure
 ```
 aAlem/
-├── Alem.py                 # Main application
-├── config.py              # Configuration management
-├── install_enhanced.py     # Enhanced installer
-├── launch_enhanced.py      # Advanced launcher
-├── requirements.txt        # Dependencies
-├── alem.png               # Application icon
-└── README.md              # Documentation
+├── alem_app/
+│   ├── __init__.py
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── cache.py
+│   │   └── discord_rpc.py
+│   ├── database/
+│   │   ├── __init__.py
+│   │   └── database.py
+│   ├── ui/
+│   │   ├── __init__.py
+│   │   ├── actions.py
+│   │   ├── left_panel.py
+│   │   ├── main_window.py
+│   │   ├── right_panel.py
+│   │   └── settings_dialog.py
+│   ├── utils/
+│   │   ├── __init__.py
+│   │   ├── encryption.py
+│   │   └── logging.py
+│   └── main.py
+├── Alem.py
+├── config.py
+├── install_enhanced.py
+├── launch_enhanced.py
+├── requirements.txt
+├── alem.png
+└── README.md
 ```
 
 ### Contributing
@@ -246,8 +271,8 @@ pip install pytest black flake8
 pytest
 
 # Code formatting
-black Alem.py
-flake8 Alem.py
+black .
+flake8 .
 ```
 
 ## 🔧 Troubleshooting
