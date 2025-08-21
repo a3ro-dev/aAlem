@@ -1,8 +1,9 @@
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QTabWidget, QTextEdit, QComboBox
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, 
+    QTextEdit, QComboBox, QTabWidget, QStyle
 )
 
 from config import config as app_config
@@ -77,7 +78,9 @@ def create_right_panel(main_window):
 
     meta_layout = QHBoxLayout()
     tags_container = QHBoxLayout()
-    tags_container.addWidget(QLabel("🏷️"))
+    tags_label = QLabel("Tags:")
+    tags_label.setStyleSheet("color:#94a3b8;font-weight:500;font-size:12px;")
+    tags_container.addWidget(tags_label)
     main_window.tags_input = QLineEdit()
     main_window.tags_input.setPlaceholderText("Add tags: productivity, ideas, work...")
     main_window.tags_input.textChanged.connect(main_window.on_content_changed)
@@ -144,31 +147,31 @@ def create_right_panel(main_window):
     )
     # Set default selection from settings
     try:
-        default_fmt = (app_config.get('default_content_format', 'html') if app_config else 'html').lower()
+        default_fmt = (app_config.get('default_content_format', 'markdown') if app_config else 'markdown').lower()
         main_window.format_combo.setCurrentText('Markdown' if default_fmt == 'markdown' else 'HTML')
     except Exception:
-        pass
+        main_window.format_combo.setCurrentText('Markdown')
 
     format_group.addWidget(main_window.format_combo)
     format_group.addWidget(QLabel("|"))
     toolbar_layout.addLayout(format_group)
 
     formatting_buttons = [
-        ("B", "Bold", main_window.toggle_bold),
-        ("I", "Italic", main_window.toggle_italic),
-        ("U", "Underline", main_window.toggle_underline),
-        ("", "sep", None),
-        ("L", "Align Left", lambda: main_window.set_alignment(Qt.AlignmentFlag.AlignLeft)),
-        ("C", "Center", lambda: main_window.set_alignment(Qt.AlignmentFlag.AlignCenter)),
-        ("R", "Align Right", lambda: main_window.set_alignment(Qt.AlignmentFlag.AlignRight)),
-        ("", "sep", None),
-        ("🔗", "Insert Link", main_window.insert_link),
-        ("📷", "Insert Image", main_window.insert_image),
-        ("</>", "Insert Code", main_window.insert_code_block),
+        ("B", "Bold", main_window.toggle_bold, QStyle.StandardPixmap.SP_DialogApplyButton),
+        ("I", "Italic", main_window.toggle_italic, None),
+        ("U", "Underline", main_window.toggle_underline, None),
+        ("", "sep", None, None),
+        ("◀", "Align Left", lambda: main_window.set_alignment(Qt.AlignmentFlag.AlignLeft), None),
+        ("▬", "Center", lambda: main_window.set_alignment(Qt.AlignmentFlag.AlignCenter), None), 
+        ("▶", "Align Right", lambda: main_window.set_alignment(Qt.AlignmentFlag.AlignRight), None),
+        ("", "sep", None, None),
+        ("Link", "Insert Link", main_window.insert_link, None),
+        ("Img", "Insert Image", main_window.insert_image, None),
+        ("Code", "Insert Code", main_window.insert_code_block, None),
     ]
 
     main_window.format_buttons = {}
-    for text, tooltip, action in formatting_buttons:
+    for text, tooltip, action, icon_type in formatting_buttons:
         if text == "":
             sep = QLabel("•")
             sep.setStyleSheet("color:#475569;font-size:14px;margin:0 4px;")
@@ -177,6 +180,28 @@ def create_right_panel(main_window):
         btn = QPushButton(text)
         btn.setFixedSize(32, 32)
         btn.setToolTip(tooltip)
+        
+        # Set proper icons for buttons
+        try:
+            if text == "B":
+                btn.setIcon(main_window.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogDetailedView))
+            elif text == "I":
+                btn.setIcon(main_window.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton))
+            elif text == "U":
+                btn.setIcon(main_window.style().standardIcon(QStyle.StandardPixmap.SP_DialogCancelButton))
+            elif text == "◀":
+                btn.setIcon(main_window.style().standardIcon(QStyle.StandardPixmap.SP_ArrowLeft))
+            elif text == "▶":
+                btn.setIcon(main_window.style().standardIcon(QStyle.StandardPixmap.SP_ArrowRight))
+            elif text == "▬":
+                btn.setIcon(main_window.style().standardIcon(QStyle.StandardPixmap.SP_DialogResetButton))
+            
+            if btn.icon():
+                btn.setIconSize(QSize(16, 16))
+                btn.setText("")  # Remove text if icon is set
+        except Exception:
+            pass  # Fallback to text if icons fail
+        
         if text in ["B", "I", "U"]:
             btn.setCheckable(True)
             main_window.format_buttons[text] = btn
@@ -246,7 +271,7 @@ def create_right_panel(main_window):
         """
     )
     edit_layout.addWidget(main_window.content_editor)
-    main_window.editor_tabs.addTab(edit_tab, "✏️ Edit")
+    main_window.editor_tabs.addTab(edit_tab, "Edit")
 
     preview_tab = QWidget()
     preview_layout = QVBoxLayout(preview_tab)
@@ -267,7 +292,7 @@ def create_right_panel(main_window):
             """
         )
     preview_layout.addWidget(main_window.preview_view)
-    main_window.editor_tabs.addTab(preview_tab, "👁️ Preview")
+    main_window.editor_tabs.addTab(preview_tab, "Preview")
 
     main_window.editor_tabs.currentChanged.connect(main_window.on_tab_changed)
     layout.addWidget(main_window.editor_tabs)

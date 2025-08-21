@@ -39,7 +39,7 @@ def create_left_panel(main_window):
 
     app_logo = QLabel()
     try:
-        icon_path = Path(__file__).parent.parent / "alem.png"
+        icon_path = Path(__file__).parent.parent.parent / "alem.png"
         if icon_path.exists():
             pm = QPixmap(str(icon_path))
             app_logo.setPixmap(pm.scaled(QSize(40, 40), Qt.AspectRatioMode.KeepAspectRatio,
@@ -161,7 +161,7 @@ def create_left_panel(main_window):
 
     main_window.filter_all = QPushButton("All")
     main_window.filter_recent = QPushButton("Recent")
-    main_window.filter_locked = QPushButton("🔒")
+    main_window.filter_locked = QPushButton("Locked")
 
     for btn in [main_window.filter_all, main_window.filter_recent, main_window.filter_locked]:
         btn.setCheckable(True)
@@ -303,7 +303,7 @@ def create_left_panel(main_window):
     """)
     primary_layout.addWidget(main_window.new_note_btn)
 
-    main_window.delete_note_btn = QPushButton("🗑 Delete")
+    main_window.delete_note_btn = QPushButton("Delete")
     main_window.delete_note_btn.clicked.connect(main_window.delete_note)
     main_window.delete_note_btn.setMinimumWidth(90)
     main_window.delete_note_btn.setFixedHeight(40)
@@ -384,7 +384,7 @@ def create_left_panel(main_window):
     """)
     stats_layout = QVBoxLayout(stats_frame)
 
-    stats_title = QLabel("📊 Analytics")
+    stats_title = QLabel("Analytics")
     stats_title.setStyleSheet("""
         QLabel {
             color: #f1f5f9;
@@ -420,6 +420,6 @@ def create_left_panel(main_window):
 
     layout.addWidget(stats_frame)
 
-    panel.setMinimumWidth(320)
-    panel.setMaximumWidth(500)
+    panel.setMinimumWidth(280)
+    panel.setMaximumWidth(400)
     return panel

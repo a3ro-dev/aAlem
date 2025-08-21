@@ -39,7 +39,7 @@ DEFAULT_SETTINGS = {
     "ai_model_cache": True,
 
     # Markdown / Editor Modes
-    "default_content_format": "html",  # 'html' or 'markdown'
+    "default_content_format": "markdown",  # 'html' or 'markdown'
     "markdown_extensions": [
         "fenced_code", "codehilite", "tables", "toc"
     ],

@@ -115,7 +115,7 @@ def setup_shortcuts(main_window):
     QShortcut(QKeySequence.StandardKey.SelectAll, main_window, lambda: main_window.content_editor.selectAll())
 
     # Search and navigation
-    QShortcut(QKeySequence.StandardKey.Find, main_window, lambda: main_window.search_.setFocus())
+    QShortcut(QKeySequence.StandardKey.Find, main_window, lambda: main_window.search_input.setFocus())
     QShortcut(QKeySequence("Ctrl+G"), main_window, main_window.focus_notes_list)
     QShortcut(QKeySequence("F3"), main_window, main_window.search_next)
     QShortcut(QKeySequence("Shift+F3"), main_window, main_window.search_previous)

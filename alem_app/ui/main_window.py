@@ -1,26 +1,34 @@
+
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Optional
 
-from PyQt6.QtCore import Qt, QTimer, QUrl, QDateTime
-from PyQt6.QtGui import QIcon, QTextCharFormat, QFont
-from PyQt6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel, QStatusBar, QProgressBar, \
-    QMessageBox, QInputDialog, QListWidgetItem
-
-from alem_app.utils.encryption import decrypt_content, encrypt_content
-from cryptography.fernet import Fernet
+from PyQt6.QtCore import Qt, QTimer, QSize
+from PyQt6.QtGui import QIcon, QFont, QKeySequence, QTextCharFormat, QAction
+from PyQt6.QtWidgets import QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QLabel, QStatusBar, QProgressBar, QMessageBox, QListWidgetItem, QDialog, QLineEdit, QListWidget, QDialogButtonBox, QFormLayout, QApplication, QInputDialog
 
 from alem_app.core.cache import RedisCacheManager
 from alem_app.core.discord_rpc import DiscordRPCManager
 from alem_app.database.database import Database, Note
+from alem_app.ui.actions import create_menu_bar, setup_shortcuts
 from alem_app.ui.left_panel import create_left_panel
 from alem_app.ui.right_panel import create_right_panel
-from alem_app.ui.actions import create_menu_bar, setup_shortcuts
 from alem_app.ui.settings_dialog import SettingsDialog
+from alem_app.utils.encryption import decrypt_content, encrypt_content
 from alem_app.utils.logging import logger
 from config import config as app_config
 
-import markdown as md
+try:
+    import markdown as md
+except ImportError:
+    md = None
+
+try:
+    from cryptography.fernet import Fernet, InvalidToken
+except ImportError:
+    Fernet = None
+    InvalidToken = None
 
 
 class SmartNotesApp(QMainWindow):
@@ -31,77 +39,46 @@ class SmartNotesApp(QMainWindow):
         self.db = Database()
         self.redis_cache = RedisCacheManager(app_config)
         self.discord = DiscordRPCManager(app_config)
-        self.current_note = None
+        self.current_note: Optional[Note] = None
         self.search_timer = QTimer()
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self._perform_delayed_search)
         self.last_search_query = ""
+        self.last_search_time = 0
 
         self.preview_timer = QTimer()
         self.preview_timer.setSingleShot(True)
         self.preview_timer.timeout.connect(self.render_preview)
 
-        # Enhanced window properties for proper resizing and snapping
         self.setWindowTitle("Alem - Smart Notes")
         self.setGeometry(100, 100, 1400, 900)
-        self.setMinimumSize(800, 600)  # Set minimum size for resizing
+        self.setMinimumSize(800, 600)
 
-        # Set window icon properly
         try:
-            icon_path = Path(__file__).parent.parent / "alem.png"
+            icon_path = Path(__file__).parent.parent.parent / "alem.png"
             if icon_path.exists():
                 self.setWindowIcon(QIcon(str(icon_path)))
-                # Also set taskbar icon on Windows
-                if hasattr(self, 'setWindowIcon'):
-                    self.setWindowIcon(QIcon(str(icon_path)))
         except Exception as e:
             logger.warning(f"Could not set app icon: {e}")
 
-        # Enable proper window resizing and snapping
-        self.setWindowFlags(Qt.WindowType.Window)  # Standard window with title bar
+        self.setWindowFlags(Qt.WindowType.Window)
 
         self.setup_ui()
         setup_shortcuts(self)
         self.load_note_headers()
         self.update_stats()
 
-        # Auto-save timer
+        # Timers
         self.auto_save_timer = QTimer()
         self.auto_save_timer.timeout.connect(self.auto_save)
-        interval = (app_config.get('auto_save_interval', 30000) if app_config else 30000)
-        self.auto_save_timer.start(int(interval))
-
-        # Redis periodic flush
         self.redis_flush_timer = QTimer()
         self.redis_flush_timer.timeout.connect(self.flush_cache_periodic)
-        flush_s = (app_config.get('redis_flush_interval_s', 60) if app_config else 60)
-        self.redis_flush_timer.start(int(flush_s * 1000))
-
-        # Analytics update timer
         self.analytics_timer = QTimer()
         self.analytics_timer.timeout.connect(self.update_analytics)
-        self.analytics_timer.start(1000)  # Update every second
-
-    def set_status(self, message: str, timeout_ms: int = 0):
-        """Show a status message regardless of status bar implementation.
-        If using the custom QWidget status area, updates the label.
-        If a real QStatusBar exists, also calls showMessage.
-        """
-        try:
-            if hasattr(self, 'status_message') and isinstance(self.status_message, QLabel):
-                self.status_message.setText(message)
-            if hasattr(self, 'status_bar') and hasattr(self.status_bar, 'showMessage'):
-                # QStatusBar API supports optional timeout
-                if timeout_ms:
-                    self.status_bar.showMessage(message, int(timeout_ms))
-                else:
-                    self.status_bar.showMessage(message)
-        except Exception as e:
-            logger.debug(f"Failed to set status message: {e}")
+        self.restart_timers()
+        self.analytics_timer.start(1000)
 
     def setup_ui(self):
-        """Setup the UI with native window frame and status bar."""
-        # Theme
         self.setStyleSheet(
             """
             QMainWindow {
@@ -115,679 +92,110 @@ class SmartNotesApp(QMainWindow):
             QWidget { color: #e2e8f0; }
             """
         )
-
-        # Central widget
         central_widget = QWidget()
         central_widget.setContentsMargins(8, 8, 8, 8)
         self.setCentralWidget(central_widget)
 
-        # Main layout
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # Content area
         content_layout = QHBoxLayout()
         content_layout.setContentsMargins(8, 8, 8, 8)
 
-        # Use a splitter so the app resizes responsively
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.splitter = splitter
-        content_layout.addWidget(splitter)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
+        content_layout.addWidget(self.splitter)
 
-        # Left and Right panels
         self.left_panel = create_left_panel(self)
-        splitter.addWidget(self.left_panel)
+        self.splitter.addWidget(self.left_panel)
         self.right_panel = create_right_panel(self)
-        splitter.addWidget(self.right_panel)
+        self.splitter.addWidget(self.right_panel)
 
-        # Make the sidebar narrower by default and collapsible for responsiveness
-        splitter.setCollapsible(0, True)
-        splitter.setCollapsible(1, False)
-        splitter.setSizes([240, 1160])
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-
-        # Remember last sidebar size for toggle
-        self._last_sidebar_size = 240
+        self.splitter.setCollapsible(0, True)
+        self.splitter.setCollapsible(1, False)
+        self.splitter.setSizes([280, 1120])
+        self.splitter.setStretchFactor(0, 0)
+        self.splitter.setStretchFactor(1, 1)
+        self._last_sidebar_size = 280
+        
+        # Set minimum sizes for responsive behavior
+        self.left_panel.setMinimumWidth(250)
+        self.right_panel.setMinimumWidth(400)
 
         main_layout.addLayout(content_layout)
 
-        # Menubar and Status bar
         create_menu_bar(self)
         self.status_bar = self.create_status_bar()
         self.setStatusBar(self.status_bar)
 
-    def create_title_bar(self):
-        """Create custom title bar with glassmorphism"""
-        title_bar = QWidget()
-        title_bar.setFixedHeight(40)
-        title_bar.setStyleSheet("""
-            QWidget {
-                background: rgba(15, 23, 42, 0.9);
-                border-radius: 12px 12px 0 0;
-                border-bottom: 1px solid rgba(51, 65, 85, 0.3);
+    def create_status_bar(self):
+        bar = QStatusBar()
+        bar.setStyleSheet("""
+            QStatusBar {
+                background: rgba(15, 23, 42, 0.95); color: #94a3b8;
+                border-top: 1px solid rgba(51, 65, 85, 0.3);
+                font-family: 'Segoe UI', system-ui, sans-serif; font-size: 11px; padding: 4px 8px;
             }
             QLabel {
-                color: #f1f5f9;
-                font-weight: 600;
-                font-size: 14px;
-            }
-            QPushButton {
-                background: rgba(71, 85, 105, 0.3);
-                border: 1px solid rgba(71, 85, 105, 0.4);
-                border-radius: 6px;
-                color: #94a3b8;
-                font-weight: 600;
-                font-size: 12px;
-                padding: 6px 12px;
-            }
-            QPushButton:hover {
-                background: rgba(239, 68, 68, 0.3);
-                color: #ef4444;
-                border: 1px solid rgba(239, 68, 68, 0.4);
+                color: #94a3b8; padding: 0 6px; background: rgba(30, 41, 59, 0.6);
+                border: 1px solid rgba(51, 65, 85, 0.3); border-radius: 4px; margin: 2px;
             }
         """)
-        
-        layout = QHBoxLayout(title_bar)
-        layout.setContentsMargins(16, 8, 16, 8)
-        
-        # App title and icon
-        title_layout = QHBoxLayout()
-        
-        app_icon = QLabel("🌟")
-        app_icon.setStyleSheet("font-size: 16px;")
-        title_layout.addWidget(app_icon)
-        
-        app_title = QLabel("Alem - Smart Notes")
-        title_layout.addWidget(app_title)
-        
-        layout.addLayout(title_layout)
-        layout.addStretch()
-        
-        # Window controls
-        minimize_btn = QPushButton("−")
-        minimize_btn.setFixedSize(32, 24)
-        minimize_btn.clicked.connect(self.showMinimized)
-        layout.addWidget(minimize_btn)
-        
-        maximize_btn = QPushButton("□")
-        maximize_btn.setFixedSize(32, 24)
-        maximize_btn.clicked.connect(self.toggle_maximize)
-        layout.addWidget(maximize_btn)
-        
-        close_btn = QPushButton("×")
-        close_btn.setFixedSize(32, 24)
-        close_btn.clicked.connect(self.close)
-        layout.addWidget(close_btn)
-        
-        return title_bar
-
-    def toggle_maximize(self):
-        """Toggle between normal and maximized window"""
-        if self.isMaximized():
-            self.showNormal()
-        else:
-            self.showMaximized()
-
-    def create_status_bar(self):
-        """Create a clean status bar with working analytics."""
-        bar = QStatusBar()
-        bar.setStyleSheet(
-            """
-            QStatusBar {
-                background: rgba(15, 23, 42, 0.95);
-                color: #94a3b8;
-                border-top: 1px solid rgba(51, 65, 85, 0.3);
-                font-family: 'Segoe UI', system-ui, sans-serif;
-                font-size: 11px;
-                padding: 4px 8px;
-            }
-            QLabel {
-                color: #94a3b8;
-                padding: 0 6px;
-                background: rgba(30, 41, 59, 0.6);
-                border: 1px solid rgba(51, 65, 85, 0.3);
-                border-radius: 4px;
-                margin: 2px;
-            }
-            """
-        )
-
-        # Working analytics widgets
         self.analytics_notes = QLabel("Notes: 0")
         self.analytics_format = QLabel("Format: -")
         self.analytics_redis = QLabel("Cache: Off")
         self.analytics_status = QLabel("Ready")
-
-        # Progress for long operations
         self.operation_progress = QProgressBar()
         self.operation_progress.setVisible(False)
         self.operation_progress.setFixedWidth(120)
-        self.operation_progress.setStyleSheet(
-            """
-            QProgressBar {
-                background: rgba(30, 41, 59, 0.6); 
-                border: 1px solid rgba(51, 65, 85, 0.3); 
-                border-radius: 4px; 
-                height: 14px;
-            } 
-            QProgressBar::chunk {
-                background: rgba(59, 130, 246, 0.6); 
-                border-radius: 3px;
-            }
-            """
+        css = (
+            "QProgressBar {"
+            "background: #1e293b99;"
+            "border: 1px solid #3341554d;"
+            "border-radius: 4px;"
+            "height: 14px;"
+            "}"
+            "QProgressBar::chunk {"
+            "background: #3b82f699;"
+            "border-radius: 3px;"
+            "}"
         )
-
-        for w in [self.analytics_notes, self.analytics_format, self.analytics_redis, self.analytics_status,
-                  self.operation_progress]:
+        self.operation_progress.setStyleSheet(css)
+        for w in [self.analytics_notes, self.analytics_format, self.analytics_redis, self.analytics_status, self.operation_progress]:
             bar.addPermanentWidget(w)
         bar.showMessage("Ready • Alem Smart Notes")
         return bar
 
-    def _perform_delayed_search(self):
-        """Perform the actual search after debounce delay"""
-        if self.last_search_query:
-            self.perform_search(self.last_search_query)
-
-    def perform_search(self, query: str):
-        """Enhanced search with timing and better feedback"""
-        start_time = time.time()
-        
-        # Show progress
-        self.operation_progress.setVisible(True)
-        self.operation_progress.setRange(0, 0)  # Indeterminate progress
-        
-        try:
-            results = self.db.search_note_headers(query)
-            self.refresh_notes_list(results)
-            
-            search_time = round((time.time() - start_time) * 1000, 1)
-            self.last_search_time = search_time
-            
-            search_type = "🤖 AI Search" if self.ai_toggle.isChecked() else "🔍 Text Search"
-            
-            self.set_status(f"{search_type}: {len(results)} results for '{query}' ({search_time}ms)")
-            # Update search time in status bar
-            self.set_status(f"Search completed in {search_time}ms", 2000)
-            
-            # Update performance indicator
-            if search_time < 50:
-                performance = "Blazing"
-            elif search_time < 100:
-                performance = "Fast"
-            elif search_time < 300:
-                performance = "Good"
-            else:
-                performance = "Slow"
-            
-            self.analytics_status.setText(performance)
-            
-        except Exception as e:
-            logger.error(f"Search error: {e}")
-            self.set_status(f"Search error: {e}")
-        finally:
-            self.operation_progress.setVisible(False)
-            self.update_analytics()
-
-    def render_preview(self):
-        """Enhanced markdown and HTML preview rendering"""
-        if not self.current_note:
-            if hasattr(self.preview_view, 'setHtml'):
-                self.preview_view.setHtml("")
-            else:
-                self.preview_view.setPlainText("")
-            return
-        
-        content = self.content_editor.toPlainText() if self.current_note.content_format == 'markdown' else self.content_editor.toHtml()
-        
-        if self.current_note.content_format == 'markdown':
-            if md is None:
-                # Fallback to plain text if markdown not available
-                if hasattr(self.preview_view, 'setHtml'):
-                    self.preview_view.setHtml(f"<pre>{content}</pre>")
-                else:
-                    self.preview_view.setPlainText(content)
-                return
-            
-            try:
-                # Get extensions from config
-                extensions = app_config.get('markdown_extensions', ["fenced_code", "tables", "toc"]) if app_config else ["fenced_code", "tables"]
-                
-                # Convert markdown to HTML
-                html_content = md.markdown(content, extensions=extensions)
-                
-                # Apply dark theme CSS for better appearance
-                styled_html = f"""
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <meta charset=\"utf-8\">
-                    <style>
-                        body {{
-                            background: rgba(15, 23, 42, 0.9);
-                            color: #f1f5f9;
-                            font-family: 'Segoe UI', system-ui, sans-serif;
-                            line-height: 1.6;
-                            padding: 24px;
-                            margin: 0;
-                        }}
-                        h1, h2, h3, h4, h5, h6 {{
-                            color: #93c5fd;
-                            margin-top: 1.5em;
-                            margin-bottom: 0.5em;
-                            font-weight: 600;
-                        }}
-                        h1 {{ font-size: 2em; border-bottom: 2px solid rgba(59, 130, 246, 0.3); padding-bottom: 0.3em; }}
-                        h2 {{ font-size: 1.6em; border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 0.2em; }}
-                        p {{ margin-bottom: 1em; }}
-                        a {{
-                            color: #60a5fa;
-                            text-decoration: none;
-                            border-bottom: 1px solid rgba(96, 165, 250, 0.3);
-                        }}
-                        a:hover {{
-                            color: #93c5fd;
-                            border-bottom-color: rgba(147, 197, 253, 0.6);
-                        }}
-                        code {{
-                            background: rgba(30, 41, 59, 0.8);
-                            color: #fbbf24;
-                            padding: 2px 6px;
-                            border-radius: 4px;
-                            font-family: 'Consolas', 'Monaco', monospace;
-                            font-size: 0.9em;
-                        }}
-                        pre {{
-                            background: rgba(30, 41, 59, 0.8);
-                            border: 1px solid rgba(51, 65, 85, 0.3);
-                            border-radius: 8px;
-                            padding: 16px;
-                            overflow-x: auto;
-                            margin: 1em 0;
-                        }}
-                        pre code {{
-                            background: transparent;
-                            padding: 0;
-                            color: #e2e8f0;
-                        }}
-                        blockquote {{
-                            border-left: 4px solid rgba(59, 130, 246, 0.5);
-                            padding-left: 16px;
-                            margin: 1em 0;
-                            color: #cbd5e1;
-                            font-style: italic;
-                            background: rgba(30, 41, 59, 0.3);
-                            border-radius: 0 8px 8px 0;
-                            padding: 12px 16px;
-                        }}
-                        table {{
-                            border-collapse: collapse;
-                            width: 100%;
-                            margin: 1em 0;
-                            border: 1px solid rgba(51, 65, 85, 0.3);
-                            border-radius: 8px;
-                            overflow: hidden;
-                        }}
-                        th, td {{
-                            border: 1px solid rgba(51, 65, 85, 0.3);
-                            padding: 12px;
-                            text-align: left;
-                        }}
-                        th {{
-                            background: rgba(59, 130, 246, 0.2);
-                            color: #93c5fd;
-                            font-weight: 600;
-                        }}
-                        tr:nth-child(even) {{
-                            background: rgba(30, 41, 59, 0.3);
-                        }}
-                        ul, ol {{
-                            padding-left: 1.5em;
-                            margin: 1em 0;
-                        }}
-                        li {{
-                            margin-bottom: 0.5em;
-                        }}
-                        hr {{
-                            border: none;
-                            height: 2px;
-                            background: linear-gradient(90deg, rgba(59, 130, 246, 0.5), rgba(139, 92, 246, 0.3));
-                            margin: 2em 0;
-                            border-radius: 1px;
-                        }}
-                        img {{
-                            max-width: 100%;
-                            height: auto;
-                            border-radius: 8px;
-                            /* box-shadow removed for compatibility */
-                        }}
-                        .codehilite {{
-                            background: rgba(30, 41, 59, 0.8);
-                            border-radius: 8px;
-                            padding: 16px;
-                            overflow-x: auto;
-                        }}
-                    </style>
-                </head>
-                <body>
-                    {html_content}
-                </body>
-                </html>
-                """
-                
-                if hasattr(self.preview_view, 'setHtml'):
-                    self.preview_view.setHtml(styled_html)
-                else:
-                    self.preview_view.setHtml(styled_html)
-                    
-            except Exception as e:
-                logger.error(f"Markdown rendering error: {e}")
-                # Fallback to plain text
-                if hasattr(self.preview_view, 'setHtml'):
-                    self.preview_view.setHtml(f"<pre style='color: #f1f5f9; background: rgba(15, 23, 42, 0.9); padding: 20px;'>{content}</pre>")
-                else:
-                    self.preview_view.setPlainText(content)
-        else:
-            # HTML content - just mirror current editor HTML with enhanced styling
-            styled_content = f"""
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset=\"utf-8\">
-                <style>
-                    body {{
-                        background: rgba(15, 23, 42, 0.9);
-                        color: #f1f5f9;
-                        font-family: 'Segoe UI', system-ui, sans-serif;
-                        line-height: 1.6;
-                        padding: 24px;
-                        margin: 0;
-                    }}
-                </style>
-            </head>
-            <body>
-                {content}
-            </body>
-            </html>
-            """
-            
-            if hasattr(self.preview_view, 'setHtml'):
-                self.preview_view.setHtml(styled_content)
-            else:
-                self.preview_view.setHtml(content)
-
-    def auto_save(self):
-        if self.current_note and self.save_btn.isEnabled():
-            self.save_note()
-
-    def flush_cache_periodic(self):
-        flushed, errors = self.redis_cache.flush_to_db(self.db)
-        if flushed > 0:
-            self.set_status(f"Flushed {flushed} notes to DB", 3000)
-        if errors > 0:
-            self.set_status(f"Redis flush error", 3000)
-
-    def update_analytics(self):
-        """Update real-time analytics with working widgets"""
-        try:
-            # Notes count
-            stats = self.db.get_stats()
-            self.analytics_notes.setText(f"Notes: {stats.get('total_notes', 0)}")
-            
-            # Current note analytics
-            if self.current_note:
-                text = self.content_editor.toPlainText()
-                words = len([w for w in text.split() if w.strip()])
-                chars = len(text)
-                
-                # Update word count label in editor
-                if hasattr(self, 'word_count_label'):
-                    self.word_count_label.setText(f"{words} words, {chars} chars")
-                
-                # Format and lock status
-                format_text = self.current_note.content_format.upper()
-                lock_status = "Locked" if self.current_note.locked else "Unlocked"
-                self.analytics_format.setText(f"Format: {format_text} | {lock_status}")
-                
-                # Update lock button
-                if hasattr(self, 'lock_btn'):
-                    self.lock_btn.setChecked(self.current_note.locked)
-                    self.lock_btn.setText("🔒" if self.current_note.locked else "🔓")
-            else:
-                if hasattr(self, 'word_count_label'):
-                    self.word_count_label.setText("0 words, 0 chars")
-                self.analytics_format.setText("Format: - | -")
-            
-            # Redis status
-            if self.redis_cache.enabled:
-                dirty_count = self.redis_cache.dirty_count()
-                self.analytics_redis.setText(f"Cache: {dirty_count} dirty")
-            else:
-                self.analytics_redis.setText("Cache: Off")
-            
-            # Status indicator
-            if hasattr(self, 'last_search_time'):
-                if self.last_search_time < 50:
-                    self.analytics_status.setText("Fast")
-                elif self.last_search_time < 200:
-                    self.analytics_status.setText("Good")
-                else:
-                    self.analytics_status.setText("Slow")
-            else:
-                self.analytics_status.setText("Ready")
-                
-        except Exception as e:
-            logger.error(f"Error updating analytics: {e}")
-            # Set fallback values
-            self.analytics_notes.setText("Notes: ?")
-            self.analytics_format.setText("Format: - | -")
-            self.analytics_redis.setText("Cache: error")
-            self.analytics_status.setText("Error")
+    def set_status(self, message: str, timeout_ms: int = 0):
+        if hasattr(self, 'status_bar') and hasattr(self.status_bar, 'showMessage'):
+            self.status_bar.showMessage(message, int(timeout_ms))
 
     def load_note_headers(self):
+        note_headers = self.db.get_all_note_headers()
+        self.refresh_notes_list(note_headers)
+
+    def refresh_notes_list(self, note_headers: list[Note]):
         self.notes_list.clear()
-        notes = self.db.get_all_note_headers()
-        for note in notes:
-            item = QListWidgetItem(note.title)
+        for note in note_headers:
+            item_text = f"{note.title}"
+            if note.tags:
+                item_text += f"  •  #{note.tags.replace(',', ' #')}"
+            item = QListWidgetItem(item_text)
             item.setData(Qt.ItemDataRole.UserRole, note.id)
+            item.setToolTip(f"Tags: {note.tags}\nCreated: {note.created_at[:10]}")
             self.notes_list.addItem(item)
-
-    def update_stats(self):
-        stats = self.db.get_stats()
-        self.analytics_notes.setText(f"Notes: {stats['total_notes']}")
-        self.cache_label.setText(f"Cache: {self.redis_cache.dirty_count()} dirty")
-        self.db_size_label.setText(f"DB Size: {stats['db_size_kb']} KB")
-
-    def new_note(self):
-        """Create a new note"""
-        default_fmt = (app_config.get('default_content_format','html') if app_config else 'html')
-        default_content = "# Start writing here..." if default_fmt == 'markdown' else "<p>Start writing here...</p>"
-        self.current_note = Note(title="New Note", content=default_content, content_format=default_fmt)
-        self.title_input.setText(self.current_note.title)
-        self.tags_input.setText("")
-        if self.current_note.content_format == 'html':
-            self.content_editor.setHtml(self.current_note.content)
-        else:
-            self.content_editor.setPlainText(self.current_note.content)
-        self.title_input.setFocus()
-        self.title_input.selectAll()
-        self.save_btn.setEnabled(True)
-        self.notes_list.setCurrentItem(None) # Deselect item in list
-        self.render_preview()
-        self.update_analytics()
-
-    def save_note(self):
-        """Save the current note""" 
-        if not self.current_note:
-            return
-
-        self.current_note.title = self.title_input.text().strip() or "Untitled"
-        # Capture content based on format
-        if self.current_note.content_format == 'html':
-            self.current_note.content = self.content_editor.toHtml()
-        else:
-            self.current_note.content = self.content_editor.toPlainText()
-        self.current_note.tags = self.tags_input.text().strip()
-        self.current_note.updated_at = datetime.now().isoformat()
-
-        # If locked, ensure encryption before persisting/caching
-        if self.current_note.locked:
-            pwd = self.prompt_password("Confirm Password", "Enter password to encrypt before saving:")
-            if not pwd:
-                QMessageBox.warning(self, "Warning", "Save cancelled: password required for locked notes.")
-                return
-            try:
-                iters = app_config.get('kdf_iterations', 390000) if app_config else 390000
-                enc = encrypt_content(self.current_note.content, pwd, iters)
-                self.current_note.content = enc
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Encryption failed: {e}")
-                return
-
-        if self.redis_cache.enabled:
-            self.redis_cache.cache_note(self.current_note)
-        else:
-            self.db.save_note(self.current_note)
-        self.load_note_headers()
-        self.save_btn.setEnabled(False)
-        self.set_status(f"Saved: '{self.current_note.title}'")
-        self.update_analytics()
-
-    def delete_note(self):
-        """Delete the selected note"""
-        current_item = self.notes_list.currentItem()
-        if not current_item:
-            QMessageBox.warning(self, "Warning", "Please select a note to delete.")
-            return
-
-        note_id = current_item.data(Qt.ItemDataRole.UserRole)
-        # We don't need to fetch the full note just to get its title for the dialog
-        title = current_item.text().split(' #')[0] 
-
-        reply = QMessageBox.question(
-            self, "Delete Note", 
-            f"Are you sure you want to delete '{title}'?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            self.db.delete_note(note_id)
-            self.load_note_headers() 
-            self.clear_editor()
-            self.set_status(f"Deleted: '{title}'")
-            self.update_analytics()
-
-    def quick_open(self):
-        """Quick open dialog for notes"""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Quick Open")
-        dialog.setModal(True)
-        dialog.resize(400, 300)
-        
-        layout = QVBoxLayout(dialog)
-        
-        search_input = QLineEdit()
-        search_input.setPlaceholderText("Type to search notes...")
-        layout.addWidget(search_input)
-        
-        notes_list = QListWidget()
-        layout.addWidget(notes_list)
-        
-        def update_list(text):
-            notes_list.clear()
-            if text:
-                results = self.db.search_note_headers(text)
-            else:
-                results = self.db.get_all_note_headers()
-            
-            for note in results[:20]:  # Limit to 20 results
-                item = QListWidgetItem(note.title)
-                item.setData(Qt.ItemDataRole.UserRole, note.id)
-                notes_list.addItem(item)
-        
-        search_input.textChanged.connect(update_list)
-        update_list("")  # Initial load
-        
-        def open_selected():
-            current_item = notes_list.currentItem()
-            if current_item:
-                note_id = current_item.data(Qt.ItemDataRole.UserRole)
-                # Find and select the note in main list
-                for i in range(self.notes_list.count()):
-                    item = self.notes_list.item(i)
-                    if item.data(Qt.ItemDataRole.UserRole) == note_id:
-                        self.notes_list.setCurrentItem(item)
-                        self.load_selected_note(item)
-                        break
-                dialog.accept()
-        
-        notes_list.itemDoubleClicked.connect(lambda: open_selected())
-        
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        buttons.accepted.connect(open_selected)
-        buttons.rejected.connect(dialog.reject)
-        layout.addWidget(buttons)
-        
-        dialog.exec()
-
-    def toggle_lock_current(self):
-        if not self.current_note:
-            return
-        if self.current_note.locked:
-            # unlock
-            pwd = self.prompt_password("Unlock Note", "Enter password to unlock:")
-            if not pwd:
-                return
-            try:
-                plain = decrypt_content(self.current_note.content, pwd)
-                self.current_note.locked = False
-                # load plaintext into editor
-                if self.current_note.content_format == 'html' and plain.strip().startswith('<'):
-                    self.content_editor.setHtml(plain)
-                else:
-                    self.content_editor.setPlainText(plain)
-                self.save_btn.setEnabled(True)
-            except Exception:
-                QMessageBox.critical(self, "Error", "Incorrect password.")
-                return
-        else:
-            if Fernet is None:
-                QMessageBox.warning(self, "Unavailable", "Cryptography not installed. Install 'cryptography' to lock notes.")
-                return
-            pwd = self.prompt_password("Lock Note", "Set a password to lock this note:", confirm=True)
-            if not pwd:
-                return
-            # will encrypt on save
-            self.current_note.locked = True
-            self.save_btn.setEnabled(True)
-        self.update_analytics()
-
-    def on_search(self, query):
-        self.search_timer.start(300)
+        self.update_stats()
 
     def load_selected_note(self, item: QListWidgetItem):
-        """Load the FULL content of the selected note from DB on demand."""
         note_id = item.data(Qt.ItemDataRole.UserRole)
-        
-        # Fetch the full note from the database ONLY when it's clicked.
         note = None
-        # Try Redis cache first
-        rd = self.redis_cache.get_note(note_id)
-        if rd:
-            try:
-                note = Note.from_dict({
-                    'id': int(rd.get('id', note_id)),
-                    'title': rd.get('title',''),
-                    'content': rd.get('content',''),
-                    'tags': rd.get('tags',''),
-                    'created_at': rd.get('created_at'),
-                    'updated_at': rd.get('updated_at'),
-                    'locked': str(rd.get('locked','0')) in ('1','True','true'),
-                    'content_format': rd.get('content_format','html')
-                })
-            except Exception:
-                note = None
+        if self.redis_cache.enabled:
+            cached_data = self.redis_cache.get_note(note_id)
+            if cached_data:
+                try:
+                    note = Note.from_dict(cached_data)
+                except Exception:
+                    note = None
         if not note:
             note = self.db.get_note(note_id)
             if note and self.redis_cache.enabled:
@@ -797,238 +205,132 @@ class SmartNotesApp(QMainWindow):
             self.current_note = note
             self.title_input.setText(note.title)
             self.tags_input.setText(note.tags)
-            # Load content based on format and lock
             content_text = note.content
             if note.locked:
-                # prompt for password
                 pwd = self.prompt_password("Unlock Note", "Enter password to unlock this note:")
                 if pwd:
                     try:
                         content_text = decrypt_content(content_text, pwd)
-                    except Exception:
+                    except (ValueError, InvalidToken):
                         QMessageBox.critical(self, "Error", "Incorrect password or decryption failed.")
                         content_text = ""
                 else:
                     content_text = ""
-            if note.content_format == 'html':
-                if content_text.strip().startswith('<'):
-                    self.content_editor.setHtml(content_text)
-                else:
-                    self.content_editor.setPlainText(content_text)
-            else:
-                # markdown: edit raw text
-                self.content_editor.setPlainText(content_text)
             
+            self.format_combo.setCurrentText(note.content_format.upper())
+            if note.content_format == 'html':
+                self.content_editor.setHtml(content_text)
+            else:
+                self.content_editor.setPlainText(content_text)
+
             self.save_btn.setEnabled(False)
             self.set_status(f"Loaded: '{note.title}'")
             self.render_preview()
             self.update_analytics()
 
-    def on_content_changed(self):
-        """Handle content changes"""
-        if not self.current_note:
-            self.new_note()
+    def new_note(self):
+        default_fmt = (app_config.get('default_content_format', 'markdown') if app_config else 'markdown')
+        self.current_note = Note(title="New Note", content="", content_format=default_fmt)
+        self.title_input.setText(self.current_note.title)
+        self.tags_input.setText("")
+        self.content_editor.clear()
+        self.format_combo.setCurrentText(default_fmt.capitalize())
+        self.title_input.setFocus()
+        self.title_input.selectAll()
         self.save_btn.setEnabled(True)
-        # live preview debounce
-        self.preview_timer.stop()
-        self.preview_timer.start(250)
+        self.notes_list.setCurrentItem(None)
+        self.render_preview()
         self.update_analytics()
 
-    def update_format_buttons(self):
-        """Update toolbar buttons based on current formatting"""
-        try:
-            fmt = self.content_editor.currentCharFormat()
-            
-            # Update bold button if it exists
-            if hasattr(self, 'bold_btn'):
-                self.bold_btn.setChecked(fmt.fontWeight() == QFont.Weight.Bold)
-            
-            # Update italic button if it exists
-            if hasattr(self, 'italic_btn'):
-                self.italic_btn.setChecked(fmt.fontItalic())
-            
-            # Update underline button if it exists
-            if hasattr(self, 'underline_btn'):
-                self.underline_btn.setChecked(fmt.fontUnderline())
-        except Exception:
-            # Silently ignore if formatting buttons aren't ready
-            pass
+    def save_note(self):
+        if not self.current_note: return
 
-    def on_format_changed(self, format_text):
-        if not self.current_note:
-            return
+        self.current_note.title = self.title_input.text().strip() or "Untitled"
+        self.current_note.content_format = self.format_combo.currentText().lower()
+        
+        if self.current_note.content_format == 'html':
+            self.current_note.content = self.content_editor.toHtml()
+        else:
+            self.current_note.content = self.content_editor.toPlainText()
+            
+        self.current_note.tags = self.tags_input.text().strip()
+        self.current_note.updated_at = datetime.now().isoformat()
 
-        new_format = format_text.lower()
-        if new_format != self.current_note.content_format:
-            self.current_note.content_format = new_format
+        if self.current_note.locked:
+            pwd = self.prompt_password("Confirm Password", "Enter password to encrypt before saving:")
+            if not pwd:
+                QMessageBox.warning(self, "Warning", "Save cancelled: password required for locked notes.")
+                return
+            try:
+                iters = app_config.get('kdf_iterations', 390000) if app_config else 390000
+                enc_content = encrypt_content(self.current_note.content, pwd, iters)
+                note_to_save = Note(**self.current_note.to_dict())
+                note_to_save.content = enc_content
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Encryption failed: {e}")
+                return
+        else:
+            note_to_save = self.current_note
+
+        if self.redis_cache.enabled:
+            self.redis_cache.cache_note(note_to_save)
+        else:
+            self.db.save_note(note_to_save)
+            
+        self.load_note_headers()
+        self.save_btn.setEnabled(False)
+        self.set_status(f"Saved: '{self.current_note.title}'")
+        self.update_analytics()
+
+    def delete_note(self):
+        current_item = self.notes_list.currentItem()
+        if not current_item: QMessageBox.warning(self, "Warning", "Please select a note to delete.")
+        else:
+            note_id = current_item.data(Qt.ItemDataRole.UserRole)
+            title = current_item.text().split('  •  #')[0]
+
+            reply = QMessageBox.question(self, "Delete Note", f"Are you sure you want to delete '{title}'?",
+                                         QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply == QMessageBox.StandardButton.Yes:
+                self.db.delete_note(note_id)
+                self.load_note_headers()
+                self.clear_editor()
+                self.set_status(f"Deleted: '{title}'")
+                self.update_analytics()
+
+    def clear_editor(self):
+        self.title_input.clear()
+        self.tags_input.clear()
+        self.content_editor.clear()
+        self.current_note = None
+        self.save_btn.setEnabled(False)
+        self.update_analytics()
+
+    def on_content_changed(self):
+        if self.current_note is not None:
             self.save_btn.setEnabled(True)
+            self.preview_timer.start(250)
             self.update_analytics()
 
-    def on_tab_changed(self, index):
-        if index == 1:  # Preview tab
-            self.render_preview()
+    def on_search(self, text):
+        self.last_search_query = text.strip()
+        self.search_timer.start(app_config.get('search_debounce_delay', 300) if app_config else 300)
 
-    def insert_link(self):
-        if not self.current_note:
-            return
-        if self.current_note.content_format == 'html':
-            link, ok = QInputDialog.getText(self, 'Insert Link', 'Enter URL:')
-            if ok and link:
-                self.content_editor.insertHtml(f'<a href="{link}">{link}</a>')
+    def _perform_delayed_search(self):
+        if self.last_search_query:
+            self.perform_search(self.last_search_query)
         else:
-            link, ok = QInputDialog.getText(self, 'Insert Link', 'Enter URL:')
-            if ok and link:
-                self.content_editor.insertPlainText(f'[{link}]({link})')
-
-    def insert_image(self):
-        if not self.current_note:
-            return
-        if self.current_note.content_format == 'html':
-            image_path, ok = QInputDialog.getText(self, 'Insert Image', 'Enter Image URL:')
-            if ok and image_path:
-                self.content_editor.insertHtml(f'<img src="{image_path}" />')
-        else:
-            image_path, ok = QInputDialog.getText(self, 'Insert Image', 'Enter Image URL:')
-            if ok and image_path:
-                self.content_editor.insertPlainText(f'![Image]({image_path})')
-
-    def insert_code_block(self):
-        if not self.current_note:
-            return
-        if self.current_note.content_format == 'html':
-            self.content_editor.insertHtml('<pre><code>\n\n</code></pre>')
-        else:
-            self.content_editor.insertPlainText('\n```\n\n```\n')
-
-    def set_alignment(self, alignment):
-        if not self.current_note:
-            return
-        self.content_editor.setAlignment(alignment)
-        self.content_editor.setFocus()
-
-    def toggle_bold(self):
-        if not self.current_note:
-            return
-        if self.current_note.content_format == 'html':
-            fmt = QTextCharFormat()
-            if not self.format_buttons['B'].isChecked():
-                fmt.setFontWeight(QFont.Weight.Normal)
-            else:
-                fmt.setFontWeight(QFont.Weight.Bold)
-            self.content_editor.mergeCurrentCharFormat(fmt)
-
-    def toggle_italic(self):
-        if not self.current_note:
-            return
-        if self.current_note.content_format == 'html':
-            self.content_editor.setFontItalic(self.format_buttons['I'].isChecked())
-
-    def toggle_underline(self):
-        if not self.current_note:
-            return
-        if self.current_note.content_format == 'html':
-            self.content_editor.setFontUnderline(self.format_buttons['U'].isChecked())
-
-    def focus_notes_list(self):
-        self.notes_list.setFocus()
-
-    def search_next(self):
-        pass
-
-    def search_previous(self):
-        pass
-
-    def toggle_fullscreen(self):
-        if self.isFullScreen():
-            self.showNormal()
-        else:
-            self.showFullScreen()
-
-    def show_settings(self):
-        dialog = SettingsDialog(self)
-        if dialog.exec():
-            if dialog.settings_changed:
-                QMessageBox.information(self, "Settings Changed", "Please restart the application for all changes to take effect.")
-
-    def show_debug_info(self):
-        pass
-
-    def show_help(self):
-        QMessageBox.information(self, "Help", "Help is not yet implemented.")
-
-    def show_about(self):
-        QMessageBox.about(self, "About Alem", "Alem - Smart Notes\nVersion 2.0\nCreated by a3ro-dev")
-
-    def restart_timers(self):
-        """Restart timers with updated intervals"""
-        if app_config:
-            # Auto-save timer
-            self.auto_save_timer.stop()
-            interval = app_config.get('auto_save_interval', 30000)
-            self.auto_save_timer.start(int(interval))
-            
-            # Redis flush timer
-            self.redis_flush_timer.stop()
-            flush_s = app_config.get('redis_flush_interval_s', 60)
-            self.redis_flush_timer.start(int(flush_s * 1000))
-
-    def refresh_notes_list(self, note_headers):
-        """Refresh the notes list widget with a given list of note headers."""
-        self.notes_list.clear()
-        for note in note_headers:
-            item_text = f"{note.title}"
-            if note.tags:
-                item_text += f" #{note.tags.replace(',', ' #')}"
-
-            item = QListWidgetItem(item_text)
-            item.setData(Qt.ItemDataRole.UserRole, note.id) 
-            item.setToolTip(f"Tags: {note.tags}\nCreated: {note.created_at[:10]}")
-            self.notes_list.addItem(item)
-        
-        self.update_stats()
-
-    def clear_editor(self):
-        """Clear the editor"""
-        self.title_input.clear()
-        self.tags_input.clear()
-        self.content_editor.clear()
-        self.current_note = None
-        self.save_btn.setEnabled(False)
+            self.load_note_headers()
 
     def perform_search(self, query: str):
-        """Enhanced search with timing and better feedback"""
-        import time
         start_time = time.time()
-        
-        # Show progress
         self.operation_progress.setVisible(True)
-        self.operation_progress.setRange(0, 0)  # Indeterminate progress
-        
+        self.operation_progress.setRange(0, 0)
         try:
             results = self.db.search_note_headers(query)
             self.refresh_notes_list(results)
-            
-            search_time = round((time.time() - start_time) * 1000, 1)
-            self.last_search_time = search_time
-            
-            search_type = "🤖 AI Search" if self.ai_toggle.isChecked() else "🔍 Text Search"
-            
-            self.set_status(f"{search_type}: {len(results)} results for '{query}' ({search_time}ms)")
-            # Update search time in status bar
-            self.set_status(f"Search completed in {search_time}ms", 2000)
-            
-            # Update performance indicator
-            if search_time < 50:
-                performance = "Blazing"
-            elif search_time < 100:
-                performance = "Fast"
-            elif search_time < 300:
-                performance = "Good"
-            else:
-                performance = "Slow"
-            
-            self.analytics_status.setText(performance)
-            
+            self.last_search_time = round((time.time() - start_time) * 1000, 1)
+            self.set_status(f"Found {len(results)} results for '{query}' ({self.last_search_time}ms)")
         except Exception as e:
             logger.error(f"Search error: {e}")
             self.set_status(f"Search error: {e}")
@@ -1036,26 +338,182 @@ class SmartNotesApp(QMainWindow):
             self.operation_progress.setVisible(False)
             self.update_analytics()
 
-    def decrease_font_size(self):
-        """Decrease font size"""
-        current_font = self.content_editor.currentFont()
-        size = current_font.pointSize()
-        if size > 8:  # Minimum font size
-            current_font.setPointSize(size - 1)
-            self.content_editor.setCurrentFont(current_font)
-        self.content_editor.setFocus()
+    def render_preview(self):
+        if not self.current_note or not hasattr(self, 'preview_view'): 
+            return
 
-    def increase_font_size(self):
-        """Increase font size"""
-        current_font = self.content_editor.currentFont()
-        size = current_font.pointSize()
-        if size < 24:  # Maximum font size
-            current_font.setPointSize(size + 1)
-            self.content_editor.setCurrentFont(current_font)
-        self.content_editor.setFocus()
+        content_format = self.format_combo.currentText().lower()
+        
+        # Check if we're using QWebEngineView or QTextEdit
+        is_web_engine = hasattr(self.preview_view, 'setHtml') and hasattr(self.preview_view, 'page')
+        
+        if content_format == 'markdown':
+            content = self.content_editor.toPlainText()
+            if md:
+                try:
+                    extensions = app_config.get('markdown_extensions', []) if app_config else []
+                    html = md.markdown(content, extensions=extensions)
+                    
+                    if is_web_engine:
+                        # Full HTML for QWebEngineView
+                        styled_html = f"""
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <meta charset="utf-8">
+                            <style>
+                                body {{
+                                    background: rgba(15, 23, 42, 0.9);
+                                    color: #f1f5f9;
+                                    font-family: 'Segoe UI', system-ui, sans-serif;
+                                    line-height: 1.6;
+                                    padding: 24px;
+                                    margin: 0;
+                                }}
+                                h1, h2, h3, h4, h5, h6 {{
+                                    color: #93c5fd;
+                                    margin-top: 1.5em;
+                                    margin-bottom: 0.5em;
+                                    font-weight: 600;
+                                }}
+                                h1 {{ font-size: 2em; border-bottom: 2px solid rgba(59, 130, 246, 0.3); padding-bottom: 0.3em; }}
+                                h2 {{ font-size: 1.6em; border-bottom: 1px solid rgba(59, 130, 246, 0.2); padding-bottom: 0.2em; }}
+                                p {{ margin-bottom: 1em; }}
+                                a {{
+                                    color: #60a5fa;
+                                    text-decoration: none;
+                                    border-bottom: 1px solid rgba(96, 165, 250, 0.3);
+                                }}
+                                a:hover {{
+                                    color: #93c5fd;
+                                    border-bottom-color: rgba(147, 197, 253, 0.6);
+                                }}
+                                code {{
+                                    background: rgba(30, 41, 59, 0.8);
+                                    color: #fbbf24;
+                                    padding: 2px 6px;
+                                    border-radius: 4px;
+                                    font-family: 'Consolas', 'Monaco', monospace;
+                                    font-size: 0.9em;
+                                }}
+                                pre {{
+                                    background: rgba(30, 41, 59, 0.8);
+                                    border: 1px solid rgba(51, 65, 85, 0.3);
+                                    border-radius: 8px;
+                                    padding: 16px;
+                                    overflow-x: auto;
+                                    margin: 1em 0;
+                                }}
+                                pre code {{
+                                    background: transparent;
+                                    padding: 0;
+                                    color: #e2e8f0;
+                                }}
+                            </style>
+                        </head>
+                        <body>
+                            {html}
+                        </body>
+                        </html>
+                        """
+                        self.preview_view.setHtml(styled_html)
+                    else:
+                        # For QTextEdit, use simpler HTML or plain text
+                        self.preview_view.setHtml(html)
+                        
+                except Exception as e:
+                    logger.error(f"Markdown rendering error: {e}")
+                    if is_web_engine:
+                        self.preview_view.setHtml(f"<pre>{content}</pre>")
+                    else:
+                        self.preview_view.setPlainText(content)
+            else:
+                # No markdown library available
+                if is_web_engine:
+                    self.preview_view.setHtml(f"<pre>{content}</pre>")
+                else:
+                    self.preview_view.setPlainText(content)
+        else: 
+            # HTML format
+            if is_web_engine:
+                self.preview_view.setHtml(self.content_editor.toHtml())
+            else:
+                self.preview_view.setHtml(self.content_editor.toHtml())
 
-    def prompt_password(self, title: str, label: str, confirm: bool = False):
-        from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QDialogButtonBox
+    def update_analytics(self):
+        stats = self.db.get_stats()
+        self.analytics_notes.setText(f"Notes: {stats.get('total_notes', 0)}")
+        if self.current_note:
+            text = self.content_editor.toPlainText()
+            words = len([w for w in text.split() if w.strip()])
+            chars = len(text)
+            self.word_count_label.setText(f"{words} words, {chars} chars")
+            format_text = self.current_note.content_format.upper()
+            lock_status = "Locked" if self.current_note.locked else "Unlocked"
+            self.analytics_format.setText(f"Format: {format_text} | {lock_status}")
+            self.lock_btn.setChecked(self.current_note.locked)
+            self.lock_btn.setText("🔒" if self.current_note.locked else "🔓")
+        else:
+            self.word_count_label.setText("0 words, 0 chars")
+            self.analytics_format.setText("Format: - | -")
+        
+        if self.redis_cache.enabled:
+            self.analytics_redis.setText(f"Cache: {self.redis_cache.dirty_count()} dirty")
+        else:
+            self.analytics_redis.setText("Cache: Off")
+
+        if self.last_search_time < 50: performance = "Fast"
+        elif self.last_search_time < 200: performance = "Good"
+        else: performance = "Slow"
+        self.analytics_status.setText(performance if self.last_search_query else "Ready")
+
+    def update_stats(self):
+        stats = self.db.get_stats()
+        self.notes_count_label.setText(f"Notes: {stats['total_notes']}")
+        self.db_size_label.setText(f"Database: {stats['db_size_kb']} KB")
+        if self.redis_cache.enabled:
+            self.cache_label.setText(f"Cache: {self.redis_cache.dirty_count()} dirty")
+        else:
+            self.cache_label.setText("Cache: Off")
+
+    def auto_save(self):
+        if self.current_note and self.save_btn.isEnabled():
+            self.save_note()
+            self.set_status("Auto-saved", 2000)
+
+    def flush_cache_periodic(self):
+        if self.redis_cache.enabled:
+            flushed, errors = self.redis_cache.flush_to_db(self.db)
+            if flushed: self.set_status(f"Flushed {flushed} note(s) to DB from cache", 2000)
+            if errors: self.set_status("Cache flush error", 3000)
+            self.update_analytics()
+
+    def toggle_lock_current(self):
+        if not self.current_note: return
+        if self.current_note.locked:
+            pwd = self.prompt_password("Unlock Note", "Enter password to unlock:")
+            if not pwd: return
+            try:
+                plain_content = decrypt_content(self.current_note.content, pwd)
+                self.current_note.locked = False
+                if self.current_note.content_format == 'html':
+                    self.content_editor.setHtml(plain_content)
+                else:
+                    self.content_editor.setPlainText(plain_content)
+                self.save_btn.setEnabled(True)
+            except (ValueError, InvalidToken):
+                QMessageBox.critical(self, "Error", "Incorrect password.")
+        else:
+            if not Fernet:
+                QMessageBox.warning(self, "Unavailable", "Install 'cryptography' to lock notes.")
+                return
+            pwd = self.prompt_password("Lock Note", "Set a password for this note:", confirm=True)
+            if pwd:
+                self.current_note.locked = True
+                self.save_btn.setEnabled(True)
+        self.update_analytics()
+
+    def prompt_password(self, title: str, label: str, confirm: bool = False) -> Optional[str]:
         dlg = QDialog(self)
         dlg.setWindowTitle(title)
         form = QFormLayout(dlg)
@@ -1076,189 +534,191 @@ class SmartNotesApp(QMainWindow):
             if confirm:
                 if p1 and inp2 and p1 == inp2.text():
                     return p1
-                else:
-                    QMessageBox.warning(self, "Mismatch", "Passwords do not match.")
-                    return None
-            return p1
-        return None
-
-    def restart_timers(self):
-        """Restart timers with updated intervals"""
-        if app_config:
-            # Auto-save timer
-            self.auto_save_timer.stop()
-            interval = app_config.get('auto_save_interval', 30000)
-            self.auto_save_timer.start(int(interval))
-            
-            # Redis flush timer
-            self.redis_flush_timer.stop()
-            flush_s = app_config.get('redis_flush_interval_s', 60)
-            self.redis_flush_timer.start(int(flush_s * 1000))
-
-    def refresh_notes_list(self, note_headers):
-        """Refresh the notes list widget with a given list of note headers."""
-        self.notes_list.clear()
-        for note in note_headers:
-            item_text = f"{note.title}"
-            if note.tags:
-                item_text += f" #{note.tags.replace(',', ' #')}"
-
-            item = QListWidgetItem(item_text)
-            item.setData(Qt.ItemDataRole.UserRole, note.id) 
-            item.setToolTip(f"Tags: {note.tags}\nCreated: {note.created_at[:10]}")
-            self.notes_list.addItem(item)
-        
-        self.update_stats()
-
-    def clear_editor(self):
-        """Clear the editor"""
-        self.title_input.clear()
-        self.tags_input.clear()
-        self.content_editor.clear()
-        self.current_note = None
-        self.save_btn.setEnabled(False)
-
-    def perform_search(self, query: str):
-        """Enhanced search with timing and better feedback"""
-        import time
-        start_time = time.time()
-        
-        # Show progress
-        self.operation_progress.setVisible(True)
-        self.operation_progress.setRange(0, 0)  # Indeterminate progress
-        
-        try:
-            results = self.db.search_note_headers(query)
-            self.refresh_notes_list(results)
-            
-            search_time = round((time.time() - start_time) * 1000, 1)
-            self.last_search_time = search_time
-            
-            search_type = "🤖 AI Search" if self.ai_toggle.isChecked() else "🔍 Text Search"
-            
-            self.set_status(f"{search_type}: {len(results)} results for '{query}' ({search_time}ms)")
-            # Update search time in status bar
-            self.set_status(f"Search completed in {search_time}ms", 2000)
-            
-            # Update performance indicator
-            if search_time < 50:
-                performance = "Blazing"
-            elif search_time < 100:
-                performance = "Fast"
-            elif search_time < 300:
-                performance = "Good"
-            else:
-                performance = "Slow"
-            
-            self.analytics_status.setText(performance)
-            
-        except Exception as e:
-            logger.error(f"Search error: {e}")
-            self.set_status(f"Search error: {e}")
-        finally:
-            self.operation_progress.setVisible(False)
-            self.update_analytics()
-
-    def decrease_font_size(self):
-        """Decrease font size"""
-        current_font = self.content_editor.currentFont()
-        size = current_font.pointSize()
-        if size > 8:  # Minimum font size
-            current_font.setPointSize(size - 1)
-            self.content_editor.setCurrentFont(current_font)
-        self.content_editor.setFocus()
-
-    def increase_font_size(self):
-        """Increase font size"""
-        current_font = self.content_editor.currentFont()
-        size = current_font.pointSize()
-        if size < 24:  # Maximum font size
-            current_font.setPointSize(size + 1)
-            self.content_editor.setCurrentFont(current_font)
-        self.content_editor.setFocus()
-
-    def decrease_font_size(self):
-        """Decrease font size"""
-        current_font = self.content_editor.currentFont()
-        size = current_font.pointSize()
-        if size > 8:  # Minimum font size
-            current_font.setPointSize(size - 1)
-            self.content_editor.setCurrentFont(current_font)
-        self.content_editor.setFocus()
-
-    def increase_font_size(self):
-        """Increase font size"""
-        current_font = self.content_editor.currentFont()
-        size = current_font.pointSize()
-        if size < 24:  # Maximum font size
-            current_font.setPointSize(size + 1)
-            self.content_editor.setCurrentFont(current_font)
-        self.content_editor.setFocus()
-
-    def prompt_password(self, title: str, label: str, confirm: bool = False):
-        from PyQt6.QtWidgets import QDialog, QFormLayout, QLineEdit, QDialogButtonBox
-        dlg = QDialog(self)
-        dlg.setWindowTitle(title)
-        form = QFormLayout(dlg)
-        inp1 = QLineEdit()
-        inp1.setEchoMode(QLineEdit.EchoMode.Password)
-        form.addRow(QLabel(label), inp1)
-        inp2 = None
-        if confirm:
-            inp2 = QLineEdit()
-            inp2.setEchoMode(QLineEdit.EchoMode.Password)
-            form.addRow(QLabel("Confirm password:"), inp2)
-        btns = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-        form.addRow(btns)
-        btns.accepted.connect(dlg.accept)
-        btns.rejected.connect(dlg.reject)
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            p1 = inp1.text()
-            if confirm:
-                if p1 and inp2 and p1 == inp2.text():
-                    return p1
-                else:
-                    QMessageBox.warning(self, "Mismatch", "Passwords do not match.")
-                    return None
+                QMessageBox.warning(self, "Mismatch", "Passwords do not match.")
+                return None
             return p1
         return None
 
     def closeEvent(self, event):
-        """Handle application close with auto-save"""
         if self.current_note and self.save_btn.isEnabled():
-            reply = QMessageBox.question(
-                self, "Unsaved Changes",
-                "You have unsaved changes. Save before closing?",
-                QMessageBox.StandardButton.Save | 
-                QMessageBox.StandardButton.Discard | 
-                QMessageBox.StandardButton.Cancel
-            )
-            
+            reply = QMessageBox.question(self, "Unsaved Changes", "Save before closing?",
+                                         QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel)
             if reply == QMessageBox.StandardButton.Save:
                 self.save_note()
             elif reply == QMessageBox.StandardButton.Cancel:
                 event.ignore()
                 return
-        
-        # Stop timers
         self.auto_save_timer.stop()
         self.search_timer.stop()
         self.redis_flush_timer.stop()
-        # Final flush to DB from Redis
-        try:
-            self.flush_cache_periodic()
-        except Exception:
-            pass
-        # Close Discord RPC
-        try:
-            self.discord.close()
-        except Exception:
-            pass
-        
-        # Save window geometry
-        settings = QApplication.instance().settings if hasattr(QApplication.instance(), 'settings') else None
+        self.flush_cache_periodic()
+        self.discord.close()
+        settings = self.get_settings()
         if settings:
             settings.setValue("geometry", self.saveGeometry())
             settings.setValue("windowState", self.saveState())
-        
         event.accept()
+
+    def get_settings(self):
+        if hasattr(QApplication.instance(), 'settings'):
+            return QApplication.instance().settings
+        return None
+
+    # --- UI Actions ---
+    def toggle_maximize(self):
+        if self.isMaximized(): self.showNormal()
+        else: self.showMaximized()
+
+    def toggle_fullscreen(self):
+        if self.isFullScreen(): self.showNormal()
+        else: self.showFullScreen()
+
+    def on_format_changed(self, format_text):
+        if self.current_note:
+            new_format = format_text.lower()
+            if new_format != self.current_note.content_format:
+                self.current_note.content_format = new_format
+                self.save_btn.setEnabled(True)
+                self.update_analytics()
+
+    def on_tab_changed(self, index):
+        if index == 1: self.render_preview()
+
+    def insert_link(self):
+        text, ok = QInputDialog.getText(self, "Insert Link", "URL:")
+        if ok and text:
+            if self.format_combo.currentText() == 'MARKDOWN':
+                self.content_editor.insertPlainText(f"[link]({text})")
+            else:
+                self.content_editor.insertHtml(f'<a href="{text}">{text}</a>')
+
+    def insert_image(self):
+        text, ok = QInputDialog.getText(self, "Insert Image", "Image URL:")
+        if ok and text:
+            if self.format_combo.currentText() == 'MARKDOWN':
+                self.content_editor.insertPlainText(f"![image]({text})")
+            else:
+                self.content_editor.insertHtml(f'<img src="{text}" alt="image"/>')
+
+    def insert_code_block(self):
+        if self.format_combo.currentText() == 'MARKDOWN':
+            self.content_editor.insertPlainText("""
+```python
+# Your code here
+print('Hello, World!')
+```
+""")
+        else:
+            self.content_editor.insertHtml("<pre><code>code here</code></pre>")
+
+    def quick_open(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Quick Open")
+        dialog.setModal(True)
+        dialog.resize(400, 300)
+        layout = QVBoxLayout(dialog)
+        search_input = QLineEdit()
+        search_input.setPlaceholderText("Type to search notes...")
+        layout.addWidget(search_input)
+        notes_list = QListWidget()
+        layout.addWidget(notes_list)
+
+        def update_list(text):
+            notes_list.clear()
+            results = self.db.search_note_headers(text) if text else self.db.get_all_note_headers()
+            for note in results[:20]:
+                item = QListWidgetItem(note.title)
+                item.setData(Qt.ItemDataRole.UserRole, note.id)
+                notes_list.addItem(item)
+        search_input.textChanged.connect(update_list)
+        update_list("")
+
+        def open_selected():
+            current_item = notes_list.currentItem()
+            if current_item:
+                note_id = current_item.data(Qt.ItemDataRole.UserRole)
+                for i in range(self.notes_list.count()):
+                    item = self.notes_list.item(i)
+                    if item.data(Qt.ItemDataRole.UserRole) == note_id:
+                        self.notes_list.setCurrentItem(item)
+                        self.load_selected_note(item)
+                        break
+                dialog.accept()
+        notes_list.itemDoubleClicked.connect(open_selected)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(open_selected)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
+
+    def focus_notes_list(self):
+        self.notes_list.setFocus()
+
+    def search_next(self): pass # Placeholder
+    def search_previous(self): pass # Placeholder
+
+    def show_settings(self):
+        dialog = SettingsDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.settings_changed:
+            QMessageBox.information(self, "Settings Saved", "Some settings require an application restart to take effect.")
+            self.restart_timers()
+
+    def show_debug_info(self):
+        stats = self.db.get_stats()
+        redis_info = f"Redis: {'Enabled' if self.redis_cache.enabled else 'Disabled'}"
+        if self.redis_cache.enabled: redis_info += f" | Dirty: {self.redis_cache.dirty_count()}"
+        info = f"""
+Database: {stats['total_notes']} notes, {stats['unique_tags']} tags, {stats['db_size_kb']} KB
+Cache: {redis_info}
+Current Note: Format {self.current_note.content_format if self.current_note else 'N/A'}, Locked: {self.current_note.locked if self.current_note else 'N/A'}
+        """
+        QMessageBox.information(self, "Debug Information", info)
+
+    def show_help(self):
+        QMessageBox.information(self, "Help", "Shortcuts:\nCtrl+N: New\nCtrl+S: Save\nCtrl+O: Quick Open\nCtrl+D: Delete\nCtrl+L: Lock/Unlock\nCtrl+F: Find\nF5: Refresh Preview")
+
+    def show_about(self):
+        QMessageBox.about(self, "About Alem", "Alem - Smart Notes v2.0\nYour modern note-taking companion.")
+
+    def restart_timers(self):
+        cfg = app_config or {}
+        self.auto_save_timer.start(cfg.get('auto_save_interval', 30000))
+        self.redis_flush_timer.start(cfg.get('redis_flush_interval_s', 60) * 1000)
+
+    def update_format_buttons(self):
+        if hasattr(self, 'format_buttons'):
+            fmt = self.content_editor.currentCharFormat()
+            self.format_buttons['B'].setChecked(fmt.fontWeight() == QFont.Weight.Bold)
+            self.format_buttons['I'].setChecked(fmt.fontItalic())
+            self.format_buttons['U'].setChecked(fmt.fontUnderline())
+
+    def toggle_bold(self):
+        self.content_editor.setFontWeight(QFont.Weight.Bold if self.content_editor.fontWeight() != QFont.Weight.Bold else QFont.Weight.Normal)
+
+    def toggle_italic(self):
+        self.content_editor.setFontItalic(not self.content_editor.fontItalic())
+
+    def toggle_underline(self):
+        self.content_editor.setFontUnderline(not self.content_editor.fontUnderline())
+
+    def set_alignment(self, alignment):
+        self.content_editor.setAlignment(alignment)
+
+    def resizeEvent(self, event):
+        """Handle window resize events for responsive design"""
+        super().resizeEvent(event)
+        
+        # Adjust splitter sizes based on window width
+        window_width = self.width()
+        if window_width < 1000:
+            # For smaller windows, make sidebar smaller
+            if self.splitter.sizes()[0] > 250:
+                self.splitter.setSizes([250, window_width - 250])
+        elif window_width < 1200:
+            # Medium windows
+            if self.splitter.sizes()[0] != 280:
+                self.splitter.setSizes([280, window_width - 280])
+        else:
+            # Large windows can have normal sidebar
+            if self.splitter.sizes()[0] < 280:
+                self.splitter.setSizes([280, window_width - 280])
