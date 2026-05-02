@@ -238,31 +238,35 @@ class SmartNotesApp(QMainWindow):
                 self.redis_cache.cache_note(note)
 
         if note:
-            self.current_note = note
-            self.title_input.setText(note.title)
-            self.tags_input.setText(note.tags)
-            content_text = note.content
-            if note.locked:
-                pwd = self.prompt_password("Unlock Note", "Enter password to unlock this note:")
-                if pwd:
-                    try:
-                        content_text = decrypt_content(content_text, pwd)
-                    except (ValueError, InvalidToken):
-                        QMessageBox.critical(self, "Error", "Incorrect password or decryption failed.")
-                        content_text = ""
-                else:
-                    content_text = ""
-            
-            self.format_combo.setCurrentText(note.content_format.upper())
-            if note.content_format == 'html':
-                self.content_editor.setHtml(content_text)
-            else:
-                self.content_editor.setPlainText(content_text)
+            self.load_note(note)
 
-            self.save_btn.setEnabled(False)
-            self.set_status(f"Loaded: '{note.title}'")
-            self.render_preview()
-            self.update_analytics()
+    def load_note(self, note):
+        """Load *note* (a Note object) into the editor."""
+        self.current_note = note
+        self.title_input.setText(note.title)
+        self.tags_input.setText(note.tags)
+        content_text = note.content
+        if note.locked:
+            pwd = self.prompt_password("Unlock Note", "Enter password to unlock this note:")
+            if pwd:
+                try:
+                    content_text = decrypt_content(content_text, pwd)
+                except (ValueError, InvalidToken):
+                    QMessageBox.critical(self, "Error", "Incorrect password or decryption failed.")
+                    content_text = ""
+            else:
+                content_text = ""
+
+        self.format_combo.setCurrentText(note.content_format.upper())
+        if note.content_format == 'html':
+            self.content_editor.setHtml(content_text)
+        else:
+            self.content_editor.setPlainText(content_text)
+
+        self.save_btn.setEnabled(False)
+        self.set_status(f"Loaded: '{note.title}'")
+        self.render_preview()
+        self.update_analytics()
 
     def new_note(self):
         default_fmt = (app_config.get('default_content_format', 'markdown') if app_config else 'markdown')

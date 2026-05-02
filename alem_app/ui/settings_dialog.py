@@ -7,6 +7,26 @@ from PyQt6.QtWidgets import (
 from config import config as app_config
 
 
+def _keyring_set(key: str, value: str) -> bool:
+    """Store *value* in the OS keyring under *key*. Returns True on success."""
+    try:
+        import keyring
+        keyring.set_password("aAlem", key, value)
+        return True
+    except Exception:
+        return False
+
+
+def _keyring_get(key: str, fallback: str = "") -> str:
+    """Retrieve a value from the OS keyring, falling back to *fallback*."""
+    try:
+        import keyring
+        value = keyring.get_password("aAlem", key)
+        return value if value is not None else fallback
+    except Exception:
+        return fallback
+
+
 class SettingsDialog(QDialog):
     """Modern Settings Dialog with Glassmorphism Design"""
 
@@ -281,6 +301,14 @@ class SettingsDialog(QDialog):
         ai_keys_group = QGroupBox("AI Keys")
         ai_keys_layout = QFormLayout(ai_keys_group)
 
+        self.ai_provider_combo = QComboBox()
+        self.ai_provider_combo.addItems(["groq", "nvidia", "glm"])
+        ai_keys_layout.addRow("Active Provider:", self.ai_provider_combo)
+
+        self.ai_model_edit = QLineEdit()
+        self.ai_model_edit.setPlaceholderText("Leave blank for provider default")
+        ai_keys_layout.addRow("Model Override:", self.ai_model_edit)
+
         self.groq_api_key_edit = QLineEdit()
         self.groq_api_key_edit.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
         ai_keys_layout.addRow("Groq API Key:", self.groq_api_key_edit)
@@ -292,6 +320,10 @@ class SettingsDialog(QDialog):
         self.glm_api_key_edit = QLineEdit()
         self.glm_api_key_edit.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
         ai_keys_layout.addRow("GLM API Key:", self.glm_api_key_edit)
+
+        keyring_note = QLabel("API keys are stored securely in the OS keyring.")
+        keyring_note.setStyleSheet("color: rgba(100,200,100,180); font-size: 11px;")
+        ai_keys_layout.addRow("", keyring_note)
 
         layout.addWidget(ai_keys_group)
 
@@ -370,9 +402,11 @@ class SettingsDialog(QDialog):
         self.kdf_iterations_spin.setValue(app_config.get('kdf_iterations', 390000))
 
         # AI Keys
-        self.groq_api_key_edit.setText(app_config.get('groq_api_key', ''))
-        self.nvidia_api_key_edit.setText(app_config.get('nvidia_api_key', ''))
-        self.glm_api_key_edit.setText(app_config.get('glm_api_key', ''))
+        self.ai_provider_combo.setCurrentText(app_config.get('ai_active_provider', 'groq'))
+        self.ai_model_edit.setText(app_config.get('ai_active_model', ''))
+        self.groq_api_key_edit.setText(_keyring_get('groq_api_key', app_config.get('groq_api_key', '')))
+        self.nvidia_api_key_edit.setText(_keyring_get('nvidia_api_key', app_config.get('nvidia_api_key', '')))
+        self.glm_api_key_edit.setText(_keyring_get('glm_api_key', app_config.get('glm_api_key', '')))
 
         # Discord
         self.discord_enabled_check.setChecked(app_config.get('discord_rpc_enabled', True))
@@ -421,10 +455,18 @@ class SettingsDialog(QDialog):
         # Security
         app_config.set('kdf_iterations', self.kdf_iterations_spin.value())
 
-        # AI Keys
-        app_config.set('groq_api_key', self.groq_api_key_edit.text())
-        app_config.set('nvidia_api_key', self.nvidia_api_key_edit.text())
-        app_config.set('glm_api_key', self.glm_api_key_edit.text())
+        # AI Keys – store keys in OS keyring; save provider/model preference in config
+        app_config.set('ai_active_provider', self.ai_provider_combo.currentText())
+        app_config.set('ai_active_model', self.ai_model_edit.text())
+        for provider_key, widget in [
+            ('groq_api_key', self.groq_api_key_edit),
+            ('nvidia_api_key', self.nvidia_api_key_edit),
+            ('glm_api_key', self.glm_api_key_edit),
+        ]:
+            value = widget.text()
+            if not _keyring_set(provider_key, value):
+                # Fall back to config if keyring is unavailable
+                app_config.set(provider_key, value)
 
         # Discord
         app_config.set('discord_rpc_enabled', self.discord_enabled_check.isChecked())

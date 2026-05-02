@@ -4,6 +4,19 @@ from PyQt6.QtGui import QTextCursor
 from alem_app.core.llm_router import LLMRouter
 import config
 
+
+def _get_api_key(provider: str) -> str:
+    """Retrieve the API key for *provider* from the OS keyring or config."""
+    try:
+        import keyring
+        value = keyring.get_password("aAlem", f"{provider}_api_key")
+        if value:
+            return value
+    except Exception:
+        pass
+    return config.config.get(f"{provider}_api_key", "")
+
+
 class InlineEditWorker(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
@@ -16,8 +29,11 @@ class InlineEditWorker(QThread):
     def run(self):
         try:
             app_config = config.config
-            if not app_config.get("groq_api_key", ""):
-                self.error.emit("Groq API key not set")
+            provider = app_config.get("ai_active_provider", "groq")
+            model = app_config.get("ai_active_model", "") or None
+
+            if not _get_api_key(provider):
+                self.error.emit(f"{provider.capitalize()} API key not set")
                 return
 
             system_prompt = "You are a writing assistant. Rewrite the given text according to the instruction. Output ONLY the rewritten text, nothing else."
@@ -26,8 +42,8 @@ class InlineEditWorker(QThread):
             response = LLMRouter.complete(
                 prompt=user_prompt,
                 system=system_prompt,
-                provider="groq",
-                model="llama-3.3-70b-versatile",
+                provider=provider,
+                model=model,
                 stream=False
             )
 

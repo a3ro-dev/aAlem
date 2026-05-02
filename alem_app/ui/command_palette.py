@@ -4,6 +4,43 @@ from PyQt6.QtGui import QTextCursor
 from alem_app.core.llm_router import LLMRouter
 import config
 
+
+def _get_api_key(provider: str) -> str:
+    """Retrieve the API key for *provider* from the OS keyring or config."""
+    try:
+        import keyring
+        value = keyring.get_password("aAlem", f"{provider}_api_key")
+        if value:
+            return value
+    except Exception:
+        pass
+    return config.config.get(f"{provider}_api_key", "")
+
+
+def _fuzzy_match(query: str, text: str) -> tuple[bool, int]:
+    """Return (matches, score) for a simple fuzzy match of *query* in *text*.
+
+    The score is the number of query characters found in order (higher = better).
+    An exact substring match is given a bonus score to rank it above scattered
+    character matches.
+    """
+    if not query:
+        return True, 0
+    text_lower = text.lower()
+    query_lower = query.lower()
+    # Exact substring: highest priority
+    if query_lower in text_lower:
+        return True, len(query) * 2
+    # Sequential character match
+    qi = 0
+    for ch in text_lower:
+        if qi < len(query_lower) and ch == query_lower[qi]:
+            qi += 1
+    if qi == len(query_lower):
+        return True, qi
+    return False, 0
+
+
 class ActionWorker(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
@@ -16,18 +53,21 @@ class ActionWorker(QThread):
     def run(self):
         try:
             app_config = config.config
-            if not app_config.get("groq_api_key", ""):
-                self.error.emit("Groq API key not set")
+            provider = app_config.get("ai_active_provider", "groq")
+            model = app_config.get("ai_active_model", "") or None
+
+            if not _get_api_key(provider):
+                self.error.emit(f"{provider.capitalize()} API key not set")
                 return
 
-            system_prompt = f"You are a writing assistant. Perform the requested action on the given text. Output ONLY the resulting text, nothing else."
+            system_prompt = "You are a writing assistant. Perform the requested action on the given text. Output ONLY the resulting text, nothing else."
             user_prompt = f"Action: {self.action_name}\n\nText:\n{self.full_note}"
 
             response = LLMRouter.complete(
                 prompt=user_prompt,
                 system=system_prompt,
-                provider="groq",
-                model="llama-3.3-70b-versatile",
+                provider=provider,
+                model=model,
                 stream=False
             )
 
@@ -173,12 +213,18 @@ class CommandPalette(QDialog):
 
     def _filter_list(self, query):
         self.list_widget.clear()
-        query = query.lower()
+        query = query.strip()
+        scored = []
         for item in self._all_items:
-            if not query or query in item["display"].lower():
-                list_item = QListWidgetItem(item["display"])
-                list_item.setData(Qt.ItemDataRole.UserRole, item)
-                self.list_widget.addItem(list_item)
+            matches, score = _fuzzy_match(query, item["display"])
+            if matches:
+                scored.append((score, item))
+        # Sort by score descending so best matches appear first
+        scored.sort(key=lambda t: t[0], reverse=True)
+        for _, item in scored:
+            list_item = QListWidgetItem(item["display"])
+            list_item.setData(Qt.ItemDataRole.UserRole, item)
+            self.list_widget.addItem(list_item)
 
         if self.list_widget.count() > 0:
             self.list_widget.setCurrentRow(0)
