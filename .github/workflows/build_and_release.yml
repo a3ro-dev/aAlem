@@ -20,6 +20,12 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Install System Dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
@@ -32,7 +38,13 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build executable
+      - name: Build executable (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          pyinstaller --noconfirm --onedir --windowed --add-data "alem.png;." --name "Alem" launch_enhanced.py
+
+      - name: Build executable (macOS/Linux)
+        if: matrix.os != 'windows-latest'
         run: |
           pyinstaller --noconfirm --onedir --windowed --add-data "alem.png:." --name "Alem" launch_enhanced.py
 
