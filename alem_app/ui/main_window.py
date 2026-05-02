@@ -376,7 +376,7 @@ class SmartNotesApp(QMainWindow):
     def on_content_changed(self):
         self.ghost_overlay.clear()
         self._current_suggestion = ""
-        self._suggestion_timer.start(320)
+        self._suggestion_timer.start(app_config.get('suggestion_debounce_ms', 320) if app_config else 320)
         if self.current_note is not None:
             self.save_btn.setEnabled(True)
             # Immediately render preview if we're on the preview tab
