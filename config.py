@@ -37,8 +37,9 @@ DEFAULT_SETTINGS = {
     # AI Settings
     "ai_search_enabled": True,
     "ai_model_cache": True,
-    "ai_active_provider": "groq",   # groq | nvidia | glm
-    "ai_active_model": "",          # leave blank to use provider default
+    "groq_api_key": "",
+    "nvidia_api_key": "",
+    "glm_api_key": "",
     "ai_suggestions_enabled": True,
     "suggestion_debounce_ms": 320,
 

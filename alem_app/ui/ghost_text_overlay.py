@@ -9,13 +9,11 @@ class GhostTextOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
         self._text = ""
-        # Initial geometry in the editor's local coordinate space
-        self.setGeometry(self.editor.rect())
+        self.resize(self.editor.size())
 
     def show_suggestion(self, text: str):
         self._text = text
-        # Use the editor's local rect so the overlay sits exactly on top of it
-        self.setGeometry(self.editor.rect())
+        self.setGeometry(self.editor.geometry())
         self.raise_()
         self.update()
 
@@ -40,6 +38,4 @@ class GhostTextOverlay(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        # Resize to match the parent editor using setGeometry so we don't
-        # trigger another resizeEvent (which calling resize() would do).
-        self.setGeometry(self.editor.rect())
+        self.resize(self.editor.size())

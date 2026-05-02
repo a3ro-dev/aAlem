@@ -2,20 +2,6 @@ from PyQt6.QtCore import QObject, pyqtSignal, QThread
 from alem_app.core.llm_router import LLMRouter
 import config
 
-
-def _get_api_key(provider: str) -> str:
-    """Retrieve the API key for *provider* from the OS keyring (preferred) or
-    fall back to the plaintext config value for backwards-compatibility."""
-    try:
-        import keyring
-        value = keyring.get_password("aAlem", f"{provider}_api_key")
-        if value:
-            return value
-    except Exception:
-        pass
-    return config.config.get(f"{provider}_api_key", "")
-
-
 class SuggestionWorker(QThread):
     suggestion_ready = pyqtSignal(str)
 
@@ -31,10 +17,14 @@ class SuggestionWorker(QThread):
             if not app_config.get("ai_suggestions_enabled", True):
                 return
 
-            provider = app_config.get("ai_active_provider", "groq")
-            model = app_config.get("ai_active_model", "") or None
-
-            if not _get_api_key(provider):
+            provider = "groq"
+            if app_config.get("groq_api_key", ""):
+                provider = "groq"
+            elif app_config.get("nvidia_api_key", ""):
+                provider = "nvidia"
+            elif app_config.get("glm_api_key", ""):
+                provider = "glm"
+            else:
                 return
 
             system_prompt = "You are a writing assistant. Complete the user's thought naturally. Output ONLY the completion text, no explanation, no quotes. Maximum 1-2 sentences."
@@ -44,7 +34,7 @@ class SuggestionWorker(QThread):
                 prompt=user_prompt,
                 system=system_prompt,
                 provider=provider,
-                model=model,
+                model=None, # Fallback to LLMRouter's default per provider
                 stream=True
             )
 
@@ -78,10 +68,8 @@ class SuggestionEngine(QObject):
         self._worker.start()
 
     def cancel(self):
-        """Signal the running worker to stop without blocking the UI thread."""
         if self._worker and self._worker.isRunning():
             self._worker.is_cancelled = True
-            # Do NOT call wait() here – the worker will exit its loop on the
-            # next chunk and finish on its own.  We discard the reference so a
-            # new worker can start immediately.
+            self._worker.quit()
+            self._worker.wait()
             self._worker = None
