@@ -276,6 +276,25 @@ class SettingsDialog(QDialog):
         security_layout.addRow("KDF Iterations:", self.kdf_iterations_spin)
 
         layout.addWidget(security_group)
+
+        # AI Keys Settings
+        ai_keys_group = QGroupBox("AI Keys")
+        ai_keys_layout = QFormLayout(ai_keys_group)
+
+        self.groq_api_key_edit = QLineEdit()
+        self.groq_api_key_edit.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
+        ai_keys_layout.addRow("Groq API Key:", self.groq_api_key_edit)
+
+        self.nvidia_api_key_edit = QLineEdit()
+        self.nvidia_api_key_edit.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
+        ai_keys_layout.addRow("Nvidia API Key:", self.nvidia_api_key_edit)
+
+        self.glm_api_key_edit = QLineEdit()
+        self.glm_api_key_edit.setEchoMode(QLineEdit.EchoMode.PasswordEchoOnEdit)
+        ai_keys_layout.addRow("GLM API Key:", self.glm_api_key_edit)
+
+        layout.addWidget(ai_keys_group)
+
         layout.addStretch()
 
         return widget
@@ -350,6 +369,11 @@ class SettingsDialog(QDialog):
         # Security
         self.kdf_iterations_spin.setValue(app_config.get('kdf_iterations', 390000))
 
+        # AI Keys
+        self.groq_api_key_edit.setText(app_config.get('groq_api_key', ''))
+        self.nvidia_api_key_edit.setText(app_config.get('nvidia_api_key', ''))
+        self.glm_api_key_edit.setText(app_config.get('glm_api_key', ''))
+
         # Discord
         self.discord_enabled_check.setChecked(app_config.get('discord_rpc_enabled', True))
         self.discord_client_id_edit.setText(app_config.get('discord_client_id', ''))
@@ -396,6 +420,11 @@ class SettingsDialog(QDialog):
 
         # Security
         app_config.set('kdf_iterations', self.kdf_iterations_spin.value())
+
+        # AI Keys
+        app_config.set('groq_api_key', self.groq_api_key_edit.text())
+        app_config.set('nvidia_api_key', self.nvidia_api_key_edit.text())
+        app_config.set('glm_api_key', self.glm_api_key_edit.text())
 
         # Discord
         app_config.set('discord_rpc_enabled', self.discord_enabled_check.isChecked())

@@ -18,6 +18,10 @@ from alem_app.ui.settings_dialog import SettingsDialog
 from alem_app.utils.encryption import decrypt_content, encrypt_content
 from alem_app.utils.logging import logger
 from config import config as app_config
+from alem_app.core.suggestion_engine import SuggestionEngine
+from alem_app.ui.ghost_text_overlay import GhostTextOverlay
+from alem_app.ui.inline_edit_bar import InlineEditBar
+from alem_app.ui.command_palette import CommandPalette
 
 try:
     import markdown as md
@@ -64,7 +68,17 @@ class SmartNotesApp(QMainWindow):
         self.setWindowFlags(Qt.WindowType.Window)
 
         self.setup_ui()
+        self.inline_edit_bar = InlineEditBar(self)
+        self.command_palette = CommandPalette(self)
+
         setup_shortcuts(self)
+        from PyQt6.QtGui import QShortcut, QKeySequence
+        ctrl_k = QShortcut(QKeySequence("Ctrl+K"), self)
+        ctrl_k.activated.connect(self._show_inline_edit)
+
+        ctrl_p = QShortcut(QKeySequence("Ctrl+P"), self)
+        ctrl_p.activated.connect(self.command_palette.show_palette)
+
         self.load_note_headers()
         self.update_stats()
         
@@ -113,6 +127,16 @@ class SmartNotesApp(QMainWindow):
         self.splitter.addWidget(self.left_panel)
         self.right_panel = create_right_panel(self)
         self.splitter.addWidget(self.right_panel)
+
+        self.suggestion_engine = SuggestionEngine(self)
+        self.ghost_overlay = GhostTextOverlay(self.content_editor)
+        self.suggestion_engine.suggestion_ready.connect(self.ghost_overlay.show_suggestion)
+        self._suggestion_timer = QTimer()
+        self._suggestion_timer.setSingleShot(True)
+        self._suggestion_timer.timeout.connect(self._request_suggestion)
+        self._current_suggestion = ""
+        self.suggestion_engine.suggestion_ready.connect(lambda t: setattr(self, '_current_suggestion', t))
+        self.content_editor.installEventFilter(self)
 
         # Configure splitter for responsive behavior
         self.splitter.setCollapsible(0, False)  # Don't allow complete collapse
@@ -318,7 +342,41 @@ class SmartNotesApp(QMainWindow):
         self.save_btn.setEnabled(False)
         self.update_analytics()
 
+    def _show_inline_edit(self):
+        self.inline_edit_bar.show_at_cursor(self.content_editor)
+
+    def _request_suggestion(self):
+        cursor = self.content_editor.textCursor()
+        doc_text = self.content_editor.toPlainText()
+        # context = last 500 chars before cursor
+        pos = cursor.position()
+        context = doc_text[max(0, pos-500):pos]
+        if len(context.strip()) < 10:
+            return
+        self.suggestion_engine.request_suggestion(context, doc_text)
+
+    def eventFilter(self, obj, event):
+        from PyQt6.QtCore import QEvent
+        from PyQt6.QtGui import QKeyEvent
+        if obj is self.content_editor and event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            from PyQt6.QtCore import Qt
+            if key == Qt.Key.Key_Tab and self._current_suggestion:
+                self.content_editor.insertPlainText(self._current_suggestion)
+                self.ghost_overlay.clear()
+                self._current_suggestion = ""
+                return True
+            if key == Qt.Key.Key_Escape and self._current_suggestion:
+                self.ghost_overlay.clear()
+                self._current_suggestion = ""
+                self.suggestion_engine.cancel()
+                return True
+        return super().eventFilter(obj, event)
+
     def on_content_changed(self):
+        self.ghost_overlay.clear()
+        self._current_suggestion = ""
+        self._suggestion_timer.start(320)
         if self.current_note is not None:
             self.save_btn.setEnabled(True)
             # Immediately render preview if we're on the preview tab

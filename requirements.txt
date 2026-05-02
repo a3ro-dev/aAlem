@@ -38,3 +38,5 @@ typing-extensions>=4.8.0
 sentence-transformers>=2.4.0
 torch>=2.1.0
 transformers>=4.36.0
+groq>=0.9.0
+openai>=1.0.0
