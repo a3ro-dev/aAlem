@@ -30,10 +30,18 @@
 - `Ctrl+O` - Quick Open
 - `Ctrl+F` - Search Notes
 - `Ctrl+L` - Lock/Unlock Note
+- `Ctrl+K` - Inline AI Assistant
+- `Ctrl+P` - Command Palette AI Operations
 - `Ctrl+1/2` - Switch Edit/Preview modes
 - `F5` - Refresh Preview
 - `F11` - Toggle Fullscreen
 - `Ctrl+,` - Settings
+
+### 🤖 **Alem AI Copilot**
+- **Ghost Text Completions**: Natural language auto-completion powered by Debounced Streaming Llama3 (Accept with `Tab`, Dismiss with `Esc`)
+- **Inline Assistant**: Context-aware floating action bar via `Ctrl+K` for seamless note rewriting
+- **Command Palette**: Rapid action-routing (`Ctrl+P`) to trigger summaries, grammar corrections, or structure changes over full notes.
+- **LLM Router**: Multi-provider failover switching routing via Groq, NVIDIA integration, and Zhipu GLM automatically.
 
 ### 📝 **Enhanced Markdown Experience**
 - **Live Preview**: Real-time rendered markdown with beautiful styling
